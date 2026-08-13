@@ -1,0 +1,23 @@
+// Prisma 数据源：本地 SQLite，零配置
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 综合诊断报告：汇总问卷/对话/舌面诊三路结果
+model Report {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  // 来源标记：questionnaire / chat / tongue / face，JSON 数组字符串
+  sources      String
+  // 规则引擎判定的体质结果（JSON 字符串）
+  resultJson   String
+  // LLM 生成的通俗报告全文（无 Key 时为模板文本）
+  summary      String
+  // 各渠道输入的摘要（JSON 字符串，便于回看）
+  inputSummary String   @default("{}")
+}
