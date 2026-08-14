@@ -7,15 +7,12 @@ import {
   CHANNEL_LABELS,
   type ChannelResult,
 } from "@/lib/session";
-import { CONSTITUTIONS, type ConstitutionId } from "@/lib/tcm/constitutions";
-import ScoreBars from "@/components/ScoreBars";
+import type { ConstitutionId } from "@/lib/tcm/constitutions";
+import ReportSections, { type ReportViewData } from "@/components/ReportSections";
 
-interface ReportResult {
+interface ReportResult extends ReportViewData {
   id: string;
-  combined: { id: ConstitutionId; name: string; score: number }[];
-  primary: { id: ConstitutionId; name: string };
-  secondary: { id: ConstitutionId; name: string; score: number }[];
-  summary: string;
+  analysis: string;
   error?: string;
 }
 
@@ -24,6 +21,7 @@ interface HistoryItem {
   createdAt: string;
   sources: string[];
   primaryName: string;
+  patternName: string | null;
 }
 
 export default function ReportPage() {
@@ -45,6 +43,9 @@ export default function ReportPage() {
     setLoading(true);
     setError("");
     try {
+      // 汇总各渠道命中的体征（证候辨证输入）
+      const signKeys = Array.from(new Set(channels.flatMap((c) => c.signKeys ?? [])));
+      const demographics = channels.find((c) => c.channel === "intake")?.demographics;
       const res = await fetch("/api/report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -55,6 +56,8 @@ export default function ReportPage() {
             weight: c.weight,
           })),
           channelNotes: Object.fromEntries(channels.map((c) => [c.channel, c.note])),
+          signKeys,
+          demographics,
           inputSummary: Object.fromEntries(channels.map((c) => [c.channel, c.note])),
         }),
       });
@@ -71,67 +74,13 @@ export default function ReportPage() {
     }
   }
 
-  const advice = report ? CONSTITUTIONS[report.primary.id].advice : null;
-
   return (
     <div>
       <h1 className="mb-4 text-2xl font-bold">综合报告</h1>
 
       {report ? (
         <div className="space-y-6">
-          <section className="rounded-xl border border-rice-dark bg-white p-6">
-            <h2 className="mb-1 text-xl font-bold">
-              综合判定：<span className="text-cinnabar">{report.primary.name}</span>
-            </h2>
-            {report.secondary.length > 0 && (
-              <p className="mb-3 text-sm text-ink-light">
-                兼夹：{report.secondary.map((s) => s.name).join("、")}
-              </p>
-            )}
-            <ScoreBars
-              items={report.combined.map((c) => ({
-                name: c.name,
-                score: c.score,
-                highlight: c.id === report.primary.id,
-              }))}
-            />
-          </section>
-
-          <section className="rounded-xl border border-rice-dark bg-white p-6">
-            <h2 className="mb-2 font-semibold">辨证分析</h2>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-light">
-              {report.summary}
-            </p>
-          </section>
-
-          {advice && (
-            <section className="rounded-xl border border-rice-dark bg-white p-6">
-              <h2 className="mb-3 font-semibold">调摄要点</h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {(
-                  [
-                    ["饮食调摄", advice.diet],
-                    ["起居调摄", advice.daily],
-                    ["运动调摄", advice.exercise],
-                    ["穴位保健", advice.acupoint],
-                  ] as const
-                ).map(([title, list]) => (
-                  <div key={title} className="rounded-lg bg-rice/60 p-4">
-                    <h3 className="mb-2 text-sm font-semibold text-cinnabar">{title}</h3>
-                    <ul className="list-disc space-y-1 pl-4 text-xs leading-relaxed text-ink-light">
-                      {list.map((item, i) => (
-                        <li key={i}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          <p className="rounded-lg bg-rice-dark/60 p-4 text-center text-sm text-ink-light">
-            本报告为体质辨识参考，不构成医疗诊断；方药须在执业中医师指导下使用。
-          </p>
+          <ReportSections data={report} analysis={report.analysis} />
           <button
             onClick={() => setReport(null)}
             className="rounded-lg border border-rice-dark px-5 py-2 text-sm text-ink-light hover:bg-rice"
@@ -159,6 +108,11 @@ export default function ReportPage() {
                       {CHANNEL_LABELS[c.channel]}
                     </span>
                     <span className="text-ink-light">{c.note}</span>
+                    {c.signKeys && c.signKeys.length > 0 && (
+                      <span className="ml-2 text-xs text-ink-light/70">
+                        （体征线索 {c.signKeys.length} 项）
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -187,6 +141,11 @@ export default function ReportPage() {
                     >
                       <span>
                         <span className="mr-2 font-medium">{h.primaryName}</span>
+                        {h.patternName && (
+                          <span className="mr-2 rounded-full bg-cinnabar/10 px-2 py-0.5 text-xs text-cinnabar">
+                            {h.patternName}
+                          </span>
+                        )}
                         <span className="text-xs text-ink-light">
                           {h.sources.map((s) => CHANNEL_LABELS[s] ?? s).join(" + ")}
                         </span>

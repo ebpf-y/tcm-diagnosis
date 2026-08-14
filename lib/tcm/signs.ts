@@ -1,34 +1,41 @@
 /**
- * 舌象 / 面象 / 自述症状 → 体质提示 映射表
+ * 舌象 / 面象 / 自述症状 → 体质与证候 双重映射表
  *
  * 舌诊、面诊（多模态 LLM 输出结构化特征）与对话问诊（关键词提取）
  * 三路非量表渠道共用的"体征提示"知识库。
- * 每个体征给出对九种体质的加分权重（0~3），由规则引擎汇总归一。
+ *
+ * - weights：体征 → 九种体质提示权重（0~3），供体质渠道评分（沿用）
+ * - patterns：体征 → 证候提示权重，3=主症级、2=舌脉级、1=兼症级，
+ *   供证候辨证评分（scorePatterns），权重即评分权重
  */
 
 import type { ConstitutionId } from "./constitutions";
+import type { PatternId } from "./patterns";
 
 export interface Sign {
   /** 体征标识 */
   key: string;
   /** 体征名称（展示用） */
   label: string;
-  /** 类别：舌象 / 面象 / 症状自述 */
-  category: "tongue" | "face" | "symptom";
+  /** 类别：舌象 / 面象 / 症状自述 / 脉象（切诊自测）/ 闻诊自评 */
+  category: "tongue" | "face" | "symptom" | "pulse" | "listening";
   /** 用于对话/图像文本匹配的关键词 */
   keywords: string[];
-  /** 对各体质的提示权重 */
-  weights: Partial<Record<ConstitutionId, number>>;
+  /** 体质提示权重 */
+  weights?: Partial<Record<ConstitutionId, number>>;
+  /** 证候提示权重（3=主症 2=舌脉 1=兼症） */
+  patterns?: Partial<Record<PatternId, number>>;
 }
 
 export const SIGNS: Sign[] = [
-  // ---------- 舌象 ----------
+  // ---------- 舌象（舌脉级，权重 2） ----------
   {
     key: "tongue_pale",
     label: "舌色淡白",
     category: "tongue",
     keywords: ["舌色淡白", "舌淡", "淡白舌"],
     weights: { yangxu: 3, qixu: 2 },
+    patterns: { piyangxu: 2, shenyangxu: 2, qixue_liangxu: 2 },
   },
   {
     key: "tongue_red",
@@ -36,6 +43,7 @@ export const SIGNS: Sign[] = [
     category: "tongue",
     keywords: ["舌色红", "舌红", "红舌"],
     weights: { yinxu: 2, shire: 2 },
+    patterns: { shenyinxu: 2, ganhuo_shangyan: 2, fengre_fanbiao: 2, xinshen_bujiao: 2 },
   },
   {
     key: "tongue_purple",
@@ -43,6 +51,7 @@ export const SIGNS: Sign[] = [
     category: "tongue",
     keywords: ["舌紫", "紫黯", "瘀点", "瘀斑舌", "舌质暗"],
     weights: { xueyu: 3 },
+    patterns: { qizhi_xueyu: 2 },
   },
   {
     key: "tongue_fat_teeth",
@@ -50,6 +59,7 @@ export const SIGNS: Sign[] = [
     category: "tongue",
     keywords: ["齿痕", "胖大", "舌体胖"],
     weights: { tanshi: 2, yangxu: 2, qixu: 1 },
+    patterns: { piqixu: 2, piyangxu: 2, tanshi_zhongzu: 2, shenyangxu: 2 },
   },
   {
     key: "tongue_crack",
@@ -57,6 +67,7 @@ export const SIGNS: Sign[] = [
     category: "tongue",
     keywords: ["裂纹"],
     weights: { yinxu: 2 },
+    patterns: { weiyinxu: 2, shenyinxu: 2 },
   },
   {
     key: "coating_thick_greasy",
@@ -64,6 +75,7 @@ export const SIGNS: Sign[] = [
     category: "tongue",
     keywords: ["苔厚腻", "苔厚", "厚腻"],
     weights: { tanshi: 3, shire: 1 },
+    patterns: { tanshi_zhongzu: 2, shire_yunpi: 2 },
   },
   {
     key: "coating_yellow",
@@ -71,6 +83,7 @@ export const SIGNS: Sign[] = [
     category: "tongue",
     keywords: ["苔黄", "黄苔"],
     weights: { shire: 3 },
+    patterns: { shire_yunpi: 2, ganhuo_shangyan: 2, fengre_fanbiao: 2 },
   },
   {
     key: "coating_thin_white",
@@ -78,6 +91,7 @@ export const SIGNS: Sign[] = [
     category: "tongue",
     keywords: ["薄白", "苔薄白"],
     weights: { pinghe: 2 },
+    patterns: { fenghan_shubiao: 2, ganyu_qizhi: 2 },
   },
   {
     key: "coating_less",
@@ -85,14 +99,16 @@ export const SIGNS: Sign[] = [
     category: "tongue",
     keywords: ["少苔", "无苔", "剥苔", "镜面舌"],
     weights: { yinxu: 3 },
+    patterns: { shenyinxu: 2, weiyinxu: 2, xinshen_bujiao: 2 },
   },
-  // ---------- 面象 ----------
+  // ---------- 面象（舌脉级，权重 2） ----------
   {
     key: "face_pale",
     label: "面色苍白或㿠白",
     category: "face",
     keywords: ["面色苍白", "面色白", "㿠白", "面色淡白"],
     weights: { yangxu: 2, qixu: 2 },
+    patterns: { qixue_liangxu: 2, piyangxu: 2 },
   },
   {
     key: "face_red",
@@ -100,6 +116,7 @@ export const SIGNS: Sign[] = [
     category: "face",
     keywords: ["面色潮红", "两颧红", "颧红", "面色红"],
     weights: { yinxu: 2, shire: 1 },
+    patterns: { ganhuo_shangyan: 2, shenyinxu: 2 },
   },
   {
     key: "face_dark",
@@ -107,6 +124,7 @@ export const SIGNS: Sign[] = [
     category: "face",
     keywords: ["面色晦", "晦暗", "褐斑", "色斑", "面色暗"],
     weights: { xueyu: 3 },
+    patterns: { qizhi_xueyu: 2 },
   },
   {
     key: "face_oily",
@@ -114,6 +132,7 @@ export const SIGNS: Sign[] = [
     category: "face",
     keywords: ["油光", "油腻", "油脂多"],
     weights: { shire: 2, tanshi: 2 },
+    patterns: { shire_yunpi: 2, tanshi_zhongzu: 2 },
   },
   {
     key: "face_acne",
@@ -121,6 +140,7 @@ export const SIGNS: Sign[] = [
     category: "face",
     keywords: ["痤疮", "痘痘", "粉刺"],
     weights: { shire: 3 },
+    patterns: { shire_yunpi: 2, ganhuo_shangyan: 2 },
   },
   {
     key: "face_edema",
@@ -128,6 +148,7 @@ export const SIGNS: Sign[] = [
     category: "face",
     keywords: ["浮肿", "眼睑肿", "水肿"],
     weights: { tanshi: 2, yangxu: 2 },
+    patterns: { tanshi_zhongzu: 2, shenyangxu: 2, piyangxu: 2 },
   },
   {
     key: "face_dark_circles",
@@ -135,6 +156,7 @@ export const SIGNS: Sign[] = [
     category: "face",
     keywords: ["黑眼圈"],
     weights: { xueyu: 2, yinxu: 1 },
+    patterns: { qizhi_xueyu: 2, shenyinxu: 2 },
   },
   {
     key: "face_lustrous",
@@ -143,48 +165,103 @@ export const SIGNS: Sign[] = [
     keywords: ["面色红润", "有光泽", "面色润泽"],
     weights: { pinghe: 3 },
   },
-  // ---------- 症状自述（对话问诊关键词提取用） ----------
+  {
+    key: "face_yellow",
+    label: "面色萎黄",
+    category: "face",
+    keywords: ["面色萎黄", "萎黄", "面色发黄"],
+    weights: { qixu: 2 },
+    patterns: { piqixu: 2, qixue_liangxu: 2, xinpi_liangxu: 2 },
+  },
+  // ---------- 症状自述：寒热汗 ----------
   {
     key: "sym_fatigue",
     label: "疲乏无力",
     category: "symptom",
-    keywords: ["疲乏", "疲劳", "乏力", "没力气", "容易累"],
+    keywords: ["疲乏", "疲劳", "乏力", "没力气", "容易累", "神疲"],
     weights: { qixu: 3, yangxu: 1 },
+    patterns: { piqixu: 1, qixue_liangxu: 1, feiqixu: 1, piyangxu: 1 },
   },
   {
     key: "sym_cold",
     label: "畏寒怕冷",
     category: "symptom",
-    keywords: ["怕冷", "畏寒", "手脚凉", "手脚冰凉", "手脚发凉"],
+    keywords: ["怕冷", "畏寒", "手脚凉", "手脚冰凉", "手脚发凉", "肢冷"],
     weights: { yangxu: 3 },
+    patterns: { piyangxu: 3, shenyangxu: 3, fenghan_shubiao: 1 },
   },
   {
     key: "sym_heat",
     label: "五心烦热/潮热",
     category: "symptom",
-    keywords: ["手脚心热", "手心热", "潮热", "烦热"],
+    keywords: ["手脚心热", "手心热", "潮热", "烦热", "五心烦热"],
     weights: { yinxu: 3 },
+    patterns: { shenyinxu: 3, xinshen_bujiao: 1, weiyinxu: 1 },
   },
+  {
+    key: "sym_sweat",
+    label: "自汗/动则汗出",
+    category: "symptom",
+    keywords: ["自汗", "出虚汗", "容易出汗", "爱出汗", "动则汗出"],
+    weights: { qixu: 2, yangxu: 1 },
+    patterns: { feiqixu: 3, piqixu: 1 },
+  },
+  {
+    key: "sym_night_sweat",
+    label: "盗汗",
+    category: "symptom",
+    keywords: ["盗汗", "夜间出汗", "睡着出汗"],
+    weights: { yinxu: 3 },
+    patterns: { shenyinxu: 3, xinshen_bujiao: 1 },
+  },
+  // ---------- 症状自述：口渴与饮食 ----------
   {
     key: "sym_dry",
     label: "口干咽燥",
     category: "symptom",
     keywords: ["口干", "咽干", "口燥", "想喝水"],
     weights: { yinxu: 2, shire: 1 },
+    patterns: { weiyinxu: 3, shenyinxu: 1, fengre_fanbiao: 1 },
   },
   {
-    key: "sym_sweat",
-    label: "自汗/易出汗",
+    key: "sym_thirst_cold_drink",
+    label: "口渴喜冷饮",
     category: "symptom",
-    keywords: ["自汗", "出虚汗", "容易出汗", "爱出汗"],
-    weights: { qixu: 2, yangxu: 1 },
+    keywords: ["喜冷饮", "口渴喜凉", "想喝凉"],
+    weights: { shire: 2 },
+    patterns: { ganhuo_shangyan: 1, fengre_fanbiao: 1, shire_yunpi: 1 },
   },
   {
-    key: "sym_phlegm",
-    label: "痰多胸闷",
+    key: "sym_no_thirst",
+    label: "口淡不渴",
     category: "symptom",
-    keywords: ["痰多", "有痰", "胸闷", "身体沉重", "困倦"],
-    weights: { tanshi: 3 },
+    keywords: ["口淡", "口不渴", "不想喝水"],
+    weights: { yangxu: 1 },
+    patterns: { piyangxu: 1, fenghan_shubiao: 1 },
+  },
+  {
+    key: "sym_appetite",
+    label: "纳呆食少",
+    category: "symptom",
+    keywords: ["食欲差", "没胃口", "纳差", "纳呆", "吃不下", "食少"],
+    weights: { qixu: 2, tanshi: 1 },
+    patterns: { piqixu: 3, ganyu_pixu: 1, tanshi_zhongzu: 1 },
+  },
+  {
+    key: "sym_bloating",
+    label: "脘腹胀满",
+    category: "symptom",
+    keywords: ["腹胀", "胀满", "脘腹", "胃胀"],
+    weights: { tanshi: 2, qiyu: 1 },
+    patterns: { ganyu_pixu: 3, piqixu: 1, tanshi_zhongzu: 1 },
+  },
+  {
+    key: "sym_belching",
+    label: "嗳气频作",
+    category: "symptom",
+    keywords: ["嗳气", "打嗝", "呃逆"],
+    weights: { qiyu: 1 },
+    patterns: { ganyu_qizhi: 1, weiyinxu: 1 },
   },
   {
     key: "sym_bitter",
@@ -192,20 +269,272 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["口苦", "口臭", "嘴里有异味", "异味"],
     weights: { shire: 3 },
+    patterns: { ganhuo_shangyan: 3, shire_yunpi: 1 },
   },
   {
-    key: "sym_pain",
-    label: "固定部位疼痛",
+    key: "sym_sticky_mouth",
+    label: "口中黏腻",
     category: "symptom",
-    keywords: ["疼痛", "刺痛", "瘀斑"],
-    weights: { xueyu: 2 },
+    keywords: ["口黏", "嘴里黏", "口中黏腻"],
+    weights: { tanshi: 2 },
+    patterns: { tanshi_zhongzu: 3, shire_yunpi: 1 },
+  },
+  // ---------- 症状自述：二便 ----------
+  {
+    key: "sym_constipation",
+    label: "大便干燥/便秘",
+    category: "symptom",
+    keywords: ["便秘", "大便干", "大便干燥", "大便干结"],
+    weights: { yinxu: 2, shire: 1 },
+    patterns: { weiyinxu: 1, qixue_liangxu: 1, shenyinxu: 1, ganhuo_shangyan: 1 },
+  },
+  {
+    key: "sym_diarrhea",
+    label: "便溏/吃凉易腹泻",
+    category: "symptom",
+    keywords: ["腹泻", "拉肚子", "便溏", "大便溏"],
+    weights: { yangxu: 2, qixu: 1 },
+    patterns: { piyangxu: 3, piqixu: 1, shenyangxu: 1, ganyu_pixu: 1 },
+  },
+  {
+    key: "sym_dawn_diarrhea",
+    label: "五更泄泻",
+    category: "symptom",
+    keywords: ["五更泻", "五更泄", "晨起腹泻", "黎明腹泻"],
+    weights: { yangxu: 2 },
+    patterns: { shenyangxu: 3 },
+  },
+  {
+    key: "sym_stool_sticky",
+    label: "大便黏滞不爽",
+    category: "symptom",
+    keywords: ["大便黏", "黏滞", "解不尽", "黏马桶"],
+    weights: { shire: 2, tanshi: 1 },
+    patterns: { shire_yunpi: 3, tanshi_zhongzu: 1 },
+  },
+  {
+    key: "sym_urine_clear",
+    label: "小便清长/夜尿多",
+    category: "symptom",
+    keywords: ["小便清长", "夜尿多", "夜尿频繁", "夜尿"],
+    weights: { yangxu: 2 },
+    patterns: { shenyangxu: 3, piyangxu: 1 },
+  },
+  {
+    key: "sym_urine_yellow",
+    label: "小便短黄",
+    category: "symptom",
+    keywords: ["小便黄", "尿黄", "小便短黄", "尿色深", "尿色浓"],
+    weights: { shire: 2 },
+    patterns: { shire_yunpi: 3, ganhuo_shangyan: 1, fengre_fanbiao: 1 },
+  },
+  // ---------- 症状自述：睡眠与情志 ----------
+  {
+    key: "sym_insomnia",
+    label: "失眠多梦",
+    category: "symptom",
+    keywords: ["失眠", "睡不着", "多梦", "睡眠不好", "不寐"],
+    weights: { yinxu: 2, qiyu: 2, qixu: 1 },
+    patterns: { xinshen_bujiao: 3, xinpi_liangxu: 1, ganxue_xu: 1 },
   },
   {
     key: "sym_mood",
     label: "情绪低落/焦虑",
     category: "symptom",
-    keywords: ["闷闷不乐", "抑郁", "焦虑", "紧张", "叹气", "心烦", "烦躁"],
+    keywords: ["闷闷不乐", "抑郁", "焦虑", "紧张", "心烦"],
     weights: { qiyu: 3 },
+    patterns: { ganyu_qizhi: 3, xinpi_liangxu: 1 },
+  },
+  {
+    key: "sym_sighing",
+    label: "善太息",
+    category: "symptom",
+    keywords: ["叹气", "善太息", "太息", "长吁短叹"],
+    weights: { qiyu: 3 },
+    patterns: { ganyu_qizhi: 3 },
+  },
+  {
+    key: "sym_irritable",
+    label: "急躁易怒",
+    category: "symptom",
+    keywords: ["易怒", "急躁", "发火", "脾气暴躁", "烦躁易怒"],
+    weights: { shire: 1, qiyu: 2 },
+    patterns: { ganhuo_shangyan: 3, ganyu_qizhi: 1 },
+  },
+  {
+    key: "sym_palpitation",
+    label: "心悸心慌",
+    category: "symptom",
+    keywords: ["心悸", "心慌", "怔忡"],
+    weights: { qixu: 1 },
+    patterns: { xinpi_liangxu: 3, xinshen_bujiao: 1, qixue_liangxu: 1 },
+  },
+  {
+    key: "sym_forgetful",
+    label: "健忘",
+    category: "symptom",
+    keywords: ["健忘", "忘事", "记忆力差"],
+    weights: { xueyu: 1 },
+    patterns: { xinpi_liangxu: 3, qizhi_xueyu: 1, xinshen_bujiao: 1 },
+  },
+  // ---------- 症状自述：头面五官与肢体 ----------
+  {
+    key: "sym_dizzy",
+    label: "头晕目眩",
+    category: "symptom",
+    keywords: ["头晕", "眩晕", "目眩"],
+    weights: { qixu: 1 },
+    patterns: { qixue_liangxu: 3, ganxue_xu: 1, ganhuo_shangyan: 1, tanshi_zhongzu: 1 },
+  },
+  {
+    key: "sym_headache",
+    label: "头痛",
+    category: "symptom",
+    keywords: ["头痛", "头胀"],
+    patterns: { ganhuo_shangyan: 1, fenghan_shubiao: 1, fengre_fanbiao: 1 },
+  },
+  {
+    key: "sym_head_heavy",
+    label: "头重如裹",
+    category: "symptom",
+    keywords: ["头重", "头沉", "头如裹"],
+    weights: { tanshi: 2 },
+    patterns: { tanshi_zhongzu: 3, shire_yunpi: 1 },
+  },
+  {
+    key: "sym_eye_dry",
+    label: "两目干涩/视物模糊",
+    category: "symptom",
+    keywords: ["眼睛干涩", "目涩", "视物模糊", "眼干"],
+    weights: { yinxu: 2 },
+    patterns: { ganxue_xu: 3, shenyinxu: 1 },
+  },
+  {
+    key: "sym_tinnitus",
+    label: "耳鸣",
+    category: "symptom",
+    keywords: ["耳鸣", "耳中鸣响"],
+    weights: { yinxu: 1 },
+    patterns: { shenyinxu: 3, ganhuo_shangyan: 1 },
+  },
+  {
+    key: "sym_pain",
+    label: "固定部位刺痛",
+    category: "symptom",
+    keywords: ["刺痛", "瘀斑", "疼痛固定", "固定疼痛"],
+    weights: { xueyu: 2 },
+    patterns: { qizhi_xueyu: 3 },
+  },
+  {
+    key: "sym_hypochondriac",
+    label: "胁肋/乳房胀痛",
+    category: "symptom",
+    keywords: ["胁胀", "胁肋", "胁痛", "乳房胀痛", "两胁"],
+    weights: { qiyu: 3 },
+    patterns: { ganyu_qizhi: 3, ganyu_pixu: 1, qizhi_xueyu: 1 },
+  },
+  {
+    key: "sym_lowerback",
+    label: "腰膝酸软",
+    category: "symptom",
+    keywords: ["腰膝酸软", "腰痛", "腰酸"],
+    weights: { yangxu: 2, yinxu: 1 },
+    patterns: { shenyangxu: 3, shenyinxu: 3, xinshen_bujiao: 1 },
+  },
+  {
+    key: "sym_numbness",
+    label: "肢体麻木",
+    category: "symptom",
+    keywords: ["麻木", "手脚麻", "筋脉拘急"],
+    weights: { xueyu: 1 },
+    patterns: { ganxue_xu: 3, qixue_liangxu: 1 },
+  },
+  // ---------- 症状自述：肺系与表证 ----------
+  {
+    key: "sym_short_breath",
+    label: "气短",
+    category: "symptom",
+    keywords: ["气短", "气不够用", "呼吸短促"],
+    weights: { qixu: 3 },
+    patterns: { feiqixu: 3, piqixu: 1 },
+  },
+  {
+    key: "sym_low_voice",
+    label: "少气懒言、声音低弱",
+    category: "symptom",
+    keywords: ["声音低弱", "懒得说话", "少气懒言", "说话无力"],
+    weights: { qixu: 2 },
+    patterns: { feiqixu: 1, piqixu: 1, qixue_liangxu: 1 },
+  },
+  {
+    key: "sym_catch_cold",
+    label: "容易感冒",
+    category: "symptom",
+    keywords: ["容易感冒", "经常感冒", "反复感冒"],
+    weights: { qixu: 2, yangxu: 1 },
+    patterns: { feiqixu: 3 },
+  },
+  {
+    key: "sym_cough",
+    label: "咳嗽",
+    category: "symptom",
+    keywords: ["咳嗽", "咳喘"],
+    patterns: { fenghan_shubiao: 1, fengre_fanbiao: 1, feiqixu: 1 },
+  },
+  {
+    key: "sym_runny_nose",
+    label: "鼻塞流清涕",
+    category: "symptom",
+    keywords: ["流清涕", "鼻塞流清", "清鼻涕", "鼻塞"],
+    weights: { tebing: 1 },
+    patterns: { fenghan_shubiao: 3, feiqixu: 1 },
+  },
+  {
+    key: "sym_sore_throat",
+    label: "咽喉肿痛",
+    category: "symptom",
+    keywords: ["咽喉肿痛", "咽痛", "喉咙痛"],
+    weights: { shire: 1 },
+    patterns: { fengre_fanbiao: 3 },
+  },
+  {
+    key: "sym_fever",
+    label: "发热",
+    category: "symptom",
+    keywords: ["发热", "发烧"],
+    patterns: { fengre_fanbiao: 3, fenghan_shubiao: 1 },
+  },
+  {
+    key: "sym_phlegm",
+    label: "痰多胸闷、身重困倦",
+    category: "symptom",
+    keywords: ["痰多", "有痰", "胸闷", "身体沉重", "困倦", "身重"],
+    weights: { tanshi: 3 },
+    patterns: { tanshi_zhongzu: 3, feiqixu: 1 },
+  },
+  // ---------- 症状自述：妇科与其他 ----------
+  {
+    key: "sym_menses_light",
+    label: "月经量少色淡",
+    category: "symptom",
+    keywords: ["月经量少", "经血色淡", "月经色淡", "经少"],
+    patterns: { qixue_liangxu: 3, ganxue_xu: 3, xinpi_liangxu: 1 },
+  },
+  {
+    key: "sym_dysmenorrhea",
+    label: "痛经、经血紫黯有块",
+    category: "symptom",
+    keywords: ["痛经", "血块", "经血紫暗", "经血紫黯"],
+    weights: { xueyu: 2 },
+    patterns: { qizhi_xueyu: 3, ganyu_qizhi: 1 },
+  },
+  {
+    key: "sym_leukorrhea",
+    label: "带下量多",
+    category: "symptom",
+    keywords: ["带下", "白带多"],
+    weights: { shire: 1, tanshi: 1 },
+    patterns: { shire_yunpi: 1, tanshi_zhongzu: 1, piyangxu: 1 },
   },
   {
     key: "sym_allergy",
@@ -213,26 +542,160 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["过敏", "打喷嚏", "荨麻疹", "鼻炎"],
     weights: { tebing: 3 },
+    patterns: { feiqixu: 1 },
+  },
+  // ---------- 脉象（切诊自测，舌脉级，权重 2；由 /intake 结构化表单产生，不做关键词匹配） ----------
+  {
+    key: "pulse_chi",
+    label: "脉迟（脉率 <60 次/分）",
+    category: "pulse",
+    keywords: ["脉迟"],
+    weights: { yangxu: 2 },
+    patterns: { piyangxu: 2, shenyangxu: 2, fenghan_shubiao: 1 },
   },
   {
-    key: "sym_insomnia",
-    label: "失眠多梦",
-    category: "symptom",
-    keywords: ["失眠", "睡不着", "多梦", "睡眠不好"],
-    weights: { yinxu: 2, qiyu: 2, qixu: 1 },
-  },
-  {
-    key: "sym_constipation",
-    label: "大便干燥/便秘",
-    category: "symptom",
-    keywords: ["便秘", "大便干", "大便干燥"],
+    key: "pulse_shuo",
+    label: "脉数（脉率 >90 次/分）",
+    category: "pulse",
+    keywords: ["脉数"],
     weights: { yinxu: 2, shire: 1 },
+    patterns: { shenyinxu: 2, ganhuo_shangyan: 2, fengre_fanbiao: 2, xinshen_bujiao: 1 },
   },
   {
-    key: "sym_diarrhea",
-    label: "吃凉易腹泻",
+    key: "pulse_fu",
+    label: "脉浮（轻按即得）",
+    category: "pulse",
+    keywords: ["脉浮"],
+    patterns: { fenghan_shubiao: 2, fengre_fanbiao: 2, feiqixu: 1 },
+  },
+  {
+    key: "pulse_chen",
+    label: "脉沉（重按才得）",
+    category: "pulse",
+    keywords: ["脉沉"],
+    weights: { yangxu: 1 },
+    patterns: { piyangxu: 2, shenyangxu: 2, tanshi_zhongzu: 1 },
+  },
+  {
+    key: "pulse_xi",
+    label: "脉细（脉道细如线）",
+    category: "pulse",
+    keywords: ["脉细"],
+    weights: { yinxu: 1 },
+    patterns: { qixue_liangxu: 2, ganxue_xu: 2, shenyinxu: 2 },
+  },
+  {
+    key: "pulse_xian",
+    label: "脉弦（紧绷如琴弦）",
+    category: "pulse",
+    keywords: ["脉弦"],
+    weights: { qiyu: 2 },
+    patterns: { ganyu_qizhi: 2, ganyu_pixu: 2, ganhuo_shangyan: 2, qizhi_xueyu: 1 },
+  },
+  {
+    key: "pulse_hua",
+    label: "脉滑（脉道宽大流利）",
+    category: "pulse",
+    keywords: ["脉滑"],
+    weights: { tanshi: 2 },
+    patterns: { tanshi_zhongzu: 2, shire_yunpi: 2 },
+  },
+  {
+    key: "pulse_ruo",
+    label: "脉弱无力",
+    category: "pulse",
+    keywords: ["脉弱", "脉无力"],
+    weights: { qixu: 2 },
+    patterns: { piqixu: 2, qixue_liangxu: 2, shenyangxu: 2, feiqixu: 1 },
+  },
+  {
+    key: "pulse_jiedai",
+    label: "脉结代（时有停跳）",
+    category: "pulse",
+    keywords: ["脉结代", "结代"],
+    weights: { xueyu: 1 },
+    patterns: { qizhi_xueyu: 2, xinpi_liangxu: 1 },
+  },
+  // ---------- 闻诊自评 ----------
+  {
+    key: "listen_low_voice",
+    label: "语声低微",
+    category: "listening",
+    keywords: ["语声低微", "声音低微"],
+    weights: { qixu: 2 },
+    patterns: { piqixu: 1, feiqixu: 1, qixue_liangxu: 1 },
+  },
+  {
+    key: "listen_hoarse",
+    label: "语声嘶哑",
+    category: "listening",
+    keywords: ["嘶哑", "声音嘶哑"],
+    patterns: { fengre_fanbiao: 1, shenyinxu: 1 },
+  },
+  {
+    key: "listen_breath_heavy",
+    label: "口气重",
+    category: "listening",
+    keywords: ["口气重", "口气秽浊"],
+    weights: { shire: 1 },
+    patterns: { shire_yunpi: 1, ganhuo_shangyan: 1 },
+  },
+  // ---------- 男性专问（由 /intake 结构化表单产生，兼症级权重 1） ----------
+  {
+    key: "sym_yijing",
+    label: "遗精",
     category: "symptom",
-    keywords: ["腹泻", "拉肚子", "便溏"],
-    weights: { yangxu: 2, qixu: 1 },
+    keywords: ["遗精"],
+    weights: { yinxu: 1, yangxu: 1 },
+    patterns: { shenyinxu: 1, shenyangxu: 1, xinshen_bujiao: 1 },
+  },
+  {
+    key: "sym_zaoxie",
+    label: "早泄",
+    category: "symptom",
+    keywords: ["早泄"],
+    weights: { yangxu: 1 },
+    patterns: { shenyangxu: 1, shenyinxu: 1, xinshen_bujiao: 1 },
+  },
+  // ---------- 进阶脉诊自测（误差较大，一律兼症级权重 1，不进主症/舌脉级） ----------
+  {
+    key: "pulse_right_weak",
+    label: "右手脉偏弱（脾肺气虚方向）",
+    category: "pulse",
+    keywords: [],
+    weights: { qixu: 1 },
+    patterns: { piqixu: 1, feiqixu: 1 },
+  },
+  {
+    key: "pulse_left_weak",
+    label: "左手脉偏弱（血虚/肝血方向）",
+    category: "pulse",
+    keywords: [],
+    weights: { yinxu: 1 },
+    patterns: { ganxue_xu: 1, qixue_liangxu: 1 },
+  },
+  {
+    key: "pulse_chi_weak",
+    label: "尺部脉弱（肾）",
+    category: "pulse",
+    keywords: [],
+    weights: { yangxu: 1, yinxu: 1 },
+    patterns: { shenyangxu: 1, shenyinxu: 1 },
+  },
+  {
+    key: "pulse_cun_weak",
+    label: "寸部脉弱（心肺）",
+    category: "pulse",
+    keywords: [],
+    weights: { qixu: 1 },
+    patterns: { feiqixu: 1, xinpi_liangxu: 1 },
+  },
+  {
+    key: "pulse_guan_weak",
+    label: "关部脉弱（中焦）",
+    category: "pulse",
+    keywords: [],
+    weights: { qixu: 1, qiyu: 1 },
+    patterns: { piqixu: 1, ganyu_pixu: 1 },
   },
 ];

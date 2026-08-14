@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { saveChannelResult } from "@/lib/session";
+import { saveChannelResult, loadChannelResults } from "@/lib/session";
 
 interface Msg {
   role: "user" | "assistant";
@@ -15,11 +15,18 @@ interface ChatTurn {
   done: boolean;
 }
 
+interface PatternTop {
+  id: string;
+  name: string;
+  score: number;
+}
+
 interface ExtractResponse {
   summary: string;
   signKeys: string[];
   scores: Record<string, number>;
   top: { id: string; name: string; score: number }[];
+  patterns?: PatternTop[];
   error?: string;
 }
 
@@ -39,11 +46,16 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, options]);
 
-  // 进入页面自动发起首轮问诊
+  // 进入页面自动发起首轮问诊；若已完成「主诉与四诊」采集，注入主诉供医师参考
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-    void ask([]);
+    const intake = loadChannelResults().find((c) => c.channel === "intake");
+    const seed: Msg[] = intake
+      ? [{ role: "user", content: `我的主诉是：${intake.note}（此前已完成主诉与四诊信息采集，请围绕主诉深入问诊，不必重复询问已提供的信息）` }]
+      : [];
+    if (seed.length > 0) setMessages(seed);
+    void ask(seed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -99,6 +111,7 @@ export default function ChatPage() {
         scores: data.scores,
         weight: 1,
         note: data.summary,
+        signKeys: data.signKeys,
       });
     } catch (err) {
       alert(err instanceof Error ? err.message : "提取失败");
@@ -202,7 +215,23 @@ export default function ChatPage() {
         <div className="mt-6 rounded-xl border border-rice-dark bg-white p-6">
           <h2 className="mb-2 font-semibold">问诊小结</h2>
           <p className="mb-3 text-sm text-ink-light">{extract.summary}</p>
-          {extract.top.length > 0 ? (
+          {extract.patterns && extract.patterns.length > 0 && (
+            <p className="mb-2 text-sm">
+              证候判定：
+              {extract.patterns.map((p, i) => (
+                <span
+                  key={p.id}
+                  className={`mr-2 rounded-full px-3 py-1 ${
+                    i === 0 ? "bg-cinnabar text-white" : "bg-rice text-cinnabar"
+                  }`}
+                >
+                  {i === 0 ? "主证 " : "兼证 "}
+                  {p.name} {p.score.toFixed(0)} 分
+                </span>
+              ))}
+            </p>
+          )}
+          {extract.top.length > 0 && (
             <p className="text-sm">
               体质倾向：
               {extract.top.map((t) => (
@@ -211,7 +240,8 @@ export default function ChatPage() {
                 </span>
               ))}
             </p>
-          ) : (
+          )}
+          {(!extract.patterns || extract.patterns.length === 0) && extract.top.length === 0 && (
             <p className="text-sm text-ink-light">未识别到明显偏颇倾向，建议结合问卷进一步确认。</p>
           )}
           <a
@@ -223,7 +253,7 @@ export default function ChatPage() {
         </div>
       )}
       <p className="mt-4 text-xs text-ink-light/70">
-        问诊内容为体质辨识参考，不构成医疗建议；如有不适请及时就医。
+        问诊内容为中医辨证调理参考，不构成疾病诊断；如有不适请及时就医。
       </p>
     </div>
   );

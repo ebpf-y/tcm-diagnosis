@@ -7,13 +7,17 @@
  */
 
 export interface ChannelResult {
-  channel: "questionnaire" | "chat" | "tongue" | "face";
+  channel: "intake" | "questionnaire" | "chat" | "tongue" | "face";
   /** 各体质得分（问卷为转化分，其余为体征提示分，均 0~100） */
   scores: Record<string, number>;
   /** 渠道权重 */
   weight: number;
   /** 渠道备注（结论文本 / 分析描述） */
   note: string;
+  /** 该渠道命中的体征 key（证候辨证的输入） */
+  signKeys?: string[];
+  /** 人口学信息（intake 渠道填写） */
+  demographics?: { gender: string; ageGroup: string };
 }
 
 const STORAGE_KEY = "tcm.channels.v1";
@@ -40,6 +44,7 @@ export function clearChannelResults(): void {
 }
 
 export const CHANNEL_LABELS: Record<string, string> = {
+  intake: "主诉与四诊",
   questionnaire: "问卷问诊",
   chat: "AI 对话问诊",
   tongue: "舌诊",

@@ -1,5 +1,5 @@
 import { chatComplete, type ChatMessage } from "@/lib/llm/client";
-import { matchSignsFromText, scoreSigns, topSignConstitutions } from "@/lib/engine";
+import { matchSignsFromText, scoreSigns, topSignConstitutions, scorePatterns } from "@/lib/engine";
 import { CHAT_SYSTEM_PROMPT, EXTRACT_SYSTEM_PROMPT } from "@/lib/prompts";
 
 export const runtime = "nodejs";
@@ -68,6 +68,11 @@ async function handleExtract(messages: ChatMessage[]) {
   const transcript = messages
     .map((m) => `${m.role === "assistant" ? "医师" : "来访者"}：${m.content}`)
     .join("\n");
+  // 关键词匹配只针对来访者自述，避免医师提问中的症状词造成误命中
+  const userText = messages
+    .filter((m) => m.role === "user")
+    .map((m) => m.content)
+    .join("\n");
 
   let summary = "";
   try {
@@ -81,10 +86,12 @@ async function handleExtract(messages: ChatMessage[]) {
     // LLM 提取失败时退化为纯关键词匹配
   }
 
-  // 关键词匹配作为确定性兜底（mock 模式下这是主要路径）
-  const signKeys = matchSignsFromText(transcript, "symptom");
+  // 关键词匹配作为确定性兜底（mock 模式下这是主要路径）；仅匹配来访者自述
+  const signKeys = matchSignsFromText(userText, "symptom");
   const scores = scoreSigns(signKeys);
   const top = topSignConstitutions(scores);
+  // 证候辨证（含命中明细）
+  const patterns = scorePatterns(signKeys).slice(0, 3);
 
   if (!summary) {
     summary =
@@ -92,5 +99,5 @@ async function handleExtract(messages: ChatMessage[]) {
         ? `对话中识别到 ${signKeys.length} 项症状线索`
         : "对话中未识别到明显症状线索";
   }
-  return Response.json({ summary, signKeys, scores, top });
+  return Response.json({ summary, signKeys, scores, top, patterns });
 }

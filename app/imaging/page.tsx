@@ -10,6 +10,7 @@ interface VisionResponse {
   signKeys: string[];
   scores: Record<string, number>;
   top: { id: string; name: string; score: number }[];
+  patterns?: { id: string; name: string; score: number }[];
   error?: string;
 }
 
@@ -84,6 +85,7 @@ function UploadCard({ mode }: { mode: Mode }) {
         scores: data.scores,
         weight: cfg.weight,
         note: data.description.replace(/\n/g, "；"),
+        signKeys: data.signKeys,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "分析失败");
@@ -122,6 +124,21 @@ function UploadCard({ mode }: { mode: Mode }) {
           <p className="whitespace-pre-wrap rounded-lg bg-rice/60 p-3 text-xs leading-relaxed text-ink-light">
             {result.description}
           </p>
+          {result.patterns && result.patterns.length > 0 && (
+            <p className="mt-2 text-sm">
+              证候提示：
+              {result.patterns.map((p, i) => (
+                <span
+                  key={p.id}
+                  className={`ml-1 rounded-full px-2 py-0.5 text-xs ${
+                    i === 0 ? "bg-cinnabar text-white" : "bg-rice text-cinnabar"
+                  }`}
+                >
+                  {p.name} {p.score.toFixed(0)} 分
+                </span>
+              ))}
+            </p>
+          )}
           {result.top.length > 0 && (
             <p className="mt-2 text-sm">
               体质提示：

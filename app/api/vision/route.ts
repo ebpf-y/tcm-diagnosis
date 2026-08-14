@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { analyzeImage, type VisionMode } from "@/lib/llm/client";
-import { matchSignsFromText, scoreSigns, topSignConstitutions } from "@/lib/engine";
+import { matchSignsFromText, scoreSigns, topSignConstitutions, scorePatterns } from "@/lib/engine";
 
 export const runtime = "nodejs";
 
@@ -38,8 +38,9 @@ export async function POST(req: Request) {
     const signKeys = matchSignsFromText(description, body.mode === "tongue" ? "tongue" : "face");
     const scores = scoreSigns(signKeys);
     const top = topSignConstitutions(scores);
+    const patterns = scorePatterns(signKeys).slice(0, 3);
 
-    return NextResponse.json({ description, signKeys, scores, top });
+    return NextResponse.json({ description, signKeys, scores, top, patterns });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "图像分析失败" },

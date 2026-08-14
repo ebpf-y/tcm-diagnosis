@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { combineChannels, type ChannelInput } from "@/lib/engine";
+import {
+  combineChannels,
+  scorePatterns,
+  buildTreatmentPlan,
+  type ChannelInput,
+  type PatternHit,
+} from "@/lib/engine";
 import { CONSTITUTIONS } from "@/lib/tcm/constitutions";
 import { chatComplete } from "@/lib/llm/client";
-import { buildReportPrompt } from "@/lib/prompts";
+import { buildAnalysisPrompt } from "@/lib/prompts";
 
 export const runtime = "nodejs";
 
@@ -16,80 +22,121 @@ const CHANNEL_LABELS: Record<string, string> = {
 
 interface ReportRequest {
   channels?: ChannelInput[];
-  /** 各渠道备注（用于报告生成与回看），如问卷结论、对话摘要、舌面象描述 */
+  /** 各渠道备注（用于报告生成与回看） */
   channelNotes?: Record<string, string>;
+  /** 各渠道汇总的体征 key 列表（证候辨证的输入） */
+  signKeys?: string[];
+  /** 人口学信息（intake 渠道） */
+  demographics?: { gender?: string; ageGroup?: string };
   inputSummary?: Record<string, unknown>;
 }
 
+/** 证候判定的最低符合度，低于此值不出具证候结论 */
+const PATTERN_THRESHOLD = 20;
+
 /**
  * POST /api/report
- * 汇总多渠道评分 → 规则引擎综合判定 → LLM 生成通俗报告 → 入库
+ * 汇总多渠道评分 → 规则引擎综合判定（体质 + 证候）→
+ * 知识库直接组装调理方案 → LLM 仅撰写「辨证分析」论述段 → 入库
  */
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as ReportRequest;
     const channels = (body.channels ?? []).filter((c) => c && c.scores && c.weight > 0);
-    if (channels.length === 0) {
-      return NextResponse.json({ error: "至少需要一个渠道的评分结果" }, { status: 400 });
+    const signKeys = body.signKeys ?? [];
+    if (channels.length === 0 && signKeys.length === 0) {
+      return NextResponse.json({ error: "至少需要一个渠道的采集结果" }, { status: 400 });
     }
 
+    // ---- 体质综合判定（保留原逻辑） ----
     const combined = combineChannels(channels);
-    // 主体质：偏颇体质中综合分最高者；若全部极低则视为平和
     const topBiased = combined.filter((c) => c.id !== "pinghe");
     const primary = topBiased[0];
-    const isBalanced = primary.score < 15;
+    const isBalanced = !primary || primary.score < 15;
     const primaryConst = isBalanced ? CONSTITUTIONS.pinghe : CONSTITUTIONS[primary.id];
     const secondary = topBiased
-      .filter((c) => c.id !== primary.id && c.score >= 20)
+      .filter((c) => c.id !== primary?.id && c.score >= 20)
       .slice(0, 2);
+
+    // ---- 证候辨证（新增） ----
+    const patternHits = scorePatterns(signKeys);
+    const qualified = patternHits.filter((h) => h.score >= PATTERN_THRESHOLD);
+    const primaryPattern: PatternHit | null = qualified[0] ?? patternHits[0] ?? null;
+    const secondaryPatterns = (qualified.length > 0 ? qualified : patternHits)
+      .filter((h) => h !== primaryPattern)
+      .slice(0, 2);
+    const plan = primaryPattern
+      ? buildTreatmentPlan(primaryPattern.id, secondaryPatterns.map((s) => s.id))
+      : null;
 
     const channelNotes = Object.entries(body.channelNotes ?? {}).map(
       ([ch, note]) => `${CHANNEL_LABELS[ch] ?? ch}：${note}`
     );
 
-    // 生成通俗报告：优先 LLM，无 Key 或失败时使用知识库模板兜底
-    let summary = "";
-    try {
-      summary = await chatComplete([
-        {
-          role: "system",
-          content: buildReportPrompt({
-            primaryName: primaryConst.name,
-            primaryScore: isBalanced ? combined.find((c) => c.id === "pinghe")?.score ?? 0 : primary.score,
-            secondaryNames: secondary.map((s) => s.name),
-            channelNotes: channelNotes.length > 0 ? channelNotes : ["仅完成部分渠道采集"],
-            traits: primaryConst.traits,
-            tendency: primaryConst.tendency,
-          }),
-        },
-        { role: "user", content: "请生成报告。" },
-      ]);
-      if (summary.trim() === "{}") summary = "";
-    } catch {
-      summary = "";
-    }
-    if (!summary) {
-      summary = buildFallbackSummary(primaryConst.name, primaryConst.traits, primaryConst.tendency, secondary.map((s) => s.name));
+    // ---- 辨证分析论述段：LLM 优先，知识库模板兜底 ----
+    let analysis = "";
+    if (plan) {
+      try {
+        analysis = await chatComplete([
+          {
+            role: "system",
+            content: buildAnalysisPrompt({
+              patternName: plan.pattern.name,
+              patternScore: primaryPattern!.score,
+              secondaryPatternNames: secondaryPatterns.map((s) => s.name),
+              pathogenesis: plan.pattern.pathogenesis,
+              hitSummary: primaryPattern!.hits.map((h) => `${h.signLabel}（${h.role}）`),
+              channelNotes: channelNotes.length > 0 ? channelNotes : ["仅完成部分渠道采集"],
+              chiefComplaint: body.channelNotes?.intake,
+              sequencingSummary: plan.sequencing
+                .map((s) => `第${s.step}步 ${s.target}：${s.focus}`)
+                .join("；"),
+            }),
+          },
+          { role: "user", content: "请撰写辨证分析。" },
+        ]);
+        if (analysis.trim() === "{}") analysis = "";
+      } catch {
+        analysis = "";
+      }
+      if (!analysis) {
+        analysis = buildFallbackAnalysis(plan.pattern.name, plan.pattern.pathogenesis, primaryPattern!, secondaryPatterns);
+      }
+    } else {
+      analysis =
+        "本次采集未获得足以定位证候的症状体征信息（辨证依据不足）。建议补充对话问诊或舌面诊后重新生成报告。";
     }
 
     const resultJson = JSON.stringify({
+      // 体质部分（字段保持兼容旧版报告）
       combined,
       primary: { id: primaryConst.id, name: primaryConst.name },
       secondary: secondary.map((s) => ({ id: s.id, name: s.name, score: s.score })),
       isBalanced,
       channelNotes: body.channelNotes ?? {},
+      // 证候部分（新增，旧报告无此字段，前端按旧格式兼容渲染）
+      patterns: primaryPattern
+        ? {
+            primary: primaryPattern,
+            secondary: secondaryPatterns,
+            signKeys,
+          }
+        : null,
+      plan,
+      // 人口学信息（用于方药剂量警示）
+      demographics: body.demographics ?? null,
     });
 
     const report = await prisma.report.create({
       data: {
         sources: JSON.stringify(channels.map((c) => c.channel)),
         resultJson,
-        summary,
+        summary: analysis,
         inputSummary: JSON.stringify(body.inputSummary ?? {}),
       },
     });
 
-    return NextResponse.json({ id: report.id, ...JSON.parse(resultJson), summary });
+    return NextResponse.json({ id: report.id, ...JSON.parse(resultJson), analysis });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "报告生成失败" },
@@ -106,29 +153,37 @@ export async function GET() {
   });
   return NextResponse.json(
     reports.map((r) => {
-      const result = JSON.parse(r.resultJson) as { primary?: { name?: string } };
+      const result = JSON.parse(r.resultJson) as {
+        primary?: { name?: string };
+        patterns?: { primary?: { name?: string } } | null;
+      };
       return {
         id: r.id,
         createdAt: r.createdAt,
         sources: JSON.parse(r.sources) as string[],
         primaryName: result.primary?.name ?? "未知",
+        patternName: result.patterns?.primary?.name ?? null,
       };
     })
   );
 }
 
-function buildFallbackSummary(
-  primaryName: string,
-  traits: string[],
-  tendency: string,
-  secondaryNames: string[]
+/** 无 LLM 时的辨证分析模板（直接从知识库拼装病机与命中关系） */
+function buildFallbackAnalysis(
+  patternName: string,
+  pathogenesis: string,
+  primaryHit: PatternHit,
+  secondary: PatternHit[]
 ): string {
+  const chiefHits = primaryHit.hits.filter((h) => h.role === "主症").map((h) => h.signLabel);
+  const otherHits = primaryHit.hits.filter((h) => h.role !== "主症").map((h) => h.signLabel);
   return (
-    `一、体质判定：主证为「${primaryName}」` +
-    (secondaryNames.length > 0 ? `，兼夹${secondaryNames.join("、")}` : "") +
-    `。\n\n二、证候分析：该体质典型表现为${traits.slice(0, 3).join("；")}。` +
-    `结合各渠道采集信息，其病机要点如上所述；${tendency}\n\n` +
-    `三、调摄要点：详见下方饮食、起居、运动、穴位四项方案，可从生活方式入手逐步纠正体质偏颇。` +
-    `若症状持续或加重，应及时就诊；方药须在执业中医师指导下使用。`
+    `综合各渠道采集信息，辨证为「${patternName}」。` +
+    (chiefHits.length > 0 ? `其中 ${chiefHits.join("、")} 为本证主症级依据；` : "") +
+    (otherHits.length > 0 ? `${otherHits.join("、")} 为佐证。` : "") +
+    `\n\n病机分析：${pathogenesis}` +
+    (secondary.length > 0
+      ? `\n\n兼证考虑：${secondary.map((s) => `${s.name}（符合度 ${s.score} 分）`).join("、")}，临床可兼顾调治。`
+      : "")
   );
 }
