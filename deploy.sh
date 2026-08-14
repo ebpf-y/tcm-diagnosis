@@ -14,7 +14,20 @@ export PRISMA_ENGINES_MIRROR=https://registry.npmmirror.com/-/binary/prisma
 
 echo "==> [1/6] 拉取最新代码"
 if [ -d .git ]; then
-  git pull --ff-only
+  # 国内机房访问 GitHub 不稳定：重试 3 次，最终失败则用当前代码继续部署
+  pulled=0
+  for i in 1 2 3; do
+    if git pull --ff-only; then
+      pulled=1
+      break
+    fi
+    echo "    第 $i 次拉取失败，5 秒后重试…"
+    sleep 5
+  done
+  if [ "$pulled" = "0" ]; then
+    echo "    ⚠️  GitHub 连接失败，将使用服务器上的现有代码继续部署"
+    echo "    （如需更新代码，可从本地打包上传，见 DEPLOY.md 常见问题）"
+  fi
 else
   echo "    非 git 目录，跳过（使用当前代码）"
 fi

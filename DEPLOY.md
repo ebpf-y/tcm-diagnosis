@@ -171,3 +171,13 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 - **构建时内存不足被杀**：见附录加 swap，或本地 `npm run build` 后将 `.next` 目录 scp 上传（不推荐，优先加内存）
 - **访问 502**：先 `curl http://127.0.0.1:3000` 确认应用在跑，再 `pm2 logs tcm` 看日志
 - **图片上传 413**：检查 Nginx 配置中 `client_max_body_size 10m` 是否存在
+- **`git pull` 连不上 GitHub**（国内机房常见，`Failure when receiving data from the peer`）：`deploy.sh` 已内置 3 次重试且失败后用现有代码继续部署。仍要更新代码时，从本地打包上传（绕过服务器访问 GitHub）：
+
+  ```bash
+  # 本地 Git Bash 执行（Windows 路径示例）
+  cd /d/Work/Data/Code/projects
+  tar --exclude=node_modules --exclude=.next --exclude=.git --exclude='prisma/*.db' -czf tcm-latest.tar.gz tcm
+  scp tcm-latest.tar.gz root@<服务器IP>:/root/
+  # 服务器上执行
+  cd ~/tcm-diagnosis && tar -xzf ~/tcm-latest.tar.gz --strip-components=1 && bash deploy.sh
+  ```
