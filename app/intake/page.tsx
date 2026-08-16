@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { saveChannelResult } from "@/lib/session";
 import {
   CHIEF_COMPLAINT_OPTIONS,
@@ -8,13 +8,17 @@ import {
   AGGRAVATING_OPTIONS,
   RELIEVING_OPTIONS,
   HISTORY_OPTIONS,
+  LIFESTYLE_OPTIONS,
+  CHECKUP_OPTIONS,
   PULSE_OPTIONS,
   PULSE_ADVANCED_OPTIONS,
+  EXPERT_PULSE_OPTIONS,
   LISTENING_OPTIONS,
   GENDER_OPTIONS,
   AGE_GROUP_OPTIONS,
   type IntakeForm,
   type PulseForm,
+  type PositionPulse,
   type ListeningForm,
   type FemaleForm,
   type MaleForm,
@@ -94,12 +98,22 @@ export default function IntakePage() {
   const [relieving, setRelieving] = useState<string[]>([]);
   const [history, setHistory] = useState<string[]>([]);
   const [medications, setMedications] = useState("");
+  const [lifestyle, setLifestyle] = useState<string[]>([]);
+  const [checkup, setCheckup] = useState<string[]>([]);
   const [femaleSkipped, setFemaleSkipped] = useState(false);
   const [female, setFemale] = useState<FemaleForm>({ cycle: "", flow: "", pain: false, leukorrhea: false });
   const [maleSkipped, setMaleSkipped] = useState(false);
   const [male, setMale] = useState<MaleForm>({ emission: false, premature: false, nightUrine: false });
   const [pulse, setPulse] = useState<PulseForm>({ rate: null, strength: "", depth: "", width: "", rhythm: "" });
+  const [pulseMode, setPulseMode] = useState<"amateur" | "expert">("amateur");
+  const [expertConfirmed, setExpertConfirmed] = useState(false);
   const [pulseSkipped, setPulseSkipped] = useState(false);
+  // 业余向导：计时器状态
+  const [timing, setTiming] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(60);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 专家模式：三部九候编辑暂存
+  const [posDraft, setPosDraft] = useState<PositionPulse>({ side: "左", position: "寸", depth: "中", qualities: [] });
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [listening, setListening] = useState<ListeningForm>({ voice: "", cough: "", breath: "" });
   const [result, setResult] = useState<IntakeResponse | null>(null);
@@ -111,6 +125,42 @@ export default function IntakePage() {
     () => CHIEF_COMPLAINT_OPTIONS.filter((o) => o.red && chief.includes(o.key)).map((o) => o.label),
     [chief]
   );
+
+  // 脉率计时器：开始/结束；结束时按实际秒数写入 measuredSeconds
+  function startTimer() {
+    if (timing) return;
+    setTiming(true);
+    setSecondsLeft(60);
+    const startedAt = Date.now();
+    timerRef.current = setInterval(() => {
+      const elapsed = Math.round((Date.now() - startedAt) / 1000);
+      const left = Math.max(0, 60 - elapsed);
+      setSecondsLeft(left);
+      if (left === 0) stopTimer(60);
+    }, 250);
+  }
+  function stopTimer(measured?: number) {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+    setTiming(false);
+    const secs = measured ?? 60 - secondsLeft;
+    setPulse((p) => ({ ...p, measuredSeconds: Math.max(1, secs) }));
+  }
+  useEffect(() => () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+  }, []);
+
+  /** 计时计数 → 自动换算脉率 */
+  function applyBeatCount(count: number) {
+    const secs = pulse.measuredSeconds ?? 60;
+    if (count > 0 && secs > 0) {
+      setPulse((p) => ({ ...p, rate: Math.round((count * 60) / secs) }));
+    }
+  }
+
+  /** 复测差异提示（>10 次/分则两次测量不可靠） */
+  const retestMismatch =
+    pulse.rate != null && pulse.retestRate != null && Math.abs(pulse.retestRate - pulse.rate) > 10;
 
   async function handleSubmit() {
     setLoading(true);
@@ -125,9 +175,13 @@ export default function IntakePage() {
       relieving,
       history: history.filter((h) => h !== "none"),
       medications: medications.trim() || undefined,
+      lifestyle,
+      checkup,
       female: gender === "female" && !femaleSkipped ? female : null,
       male: gender === "male" && !maleSkipped ? male : null,
-      pulse: pulseSkipped ? { rate: null, strength: "", depth: "", width: "", rhythm: "" } : pulse,
+      pulse: pulseSkipped
+        ? { rate: null, strength: "", depth: "", width: "", rhythm: "" }
+        : { ...pulse, mode: pulseMode },
       listening,
     };
     try {
@@ -145,7 +199,8 @@ export default function IntakePage() {
         weight: 2,
         note: data.note,
         signKeys: data.signKeys,
-        demographics: { gender, ageGroup },
+        demographics: { gender, ageGroup, history: form.history, medications: form.medications, course, checkup },
+        pulseMode: pulseSkipped ? undefined : pulseMode,
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
@@ -354,15 +409,63 @@ export default function IntakePage() {
           )}
 
           <Section
-            title="五、切诊（脉诊自测）"
-            hint="静坐 5 分钟后，用食指、中指、无名指按压对侧手腕桡动脉（拇指侧腕横纹上方），测 1 分钟。自测仅供辨证参考，精确脉诊需医师当面切脉。"
+            title="五、切诊（脉诊）"
+            hint={
+              pulseMode === "amateur"
+                ? "跟着步骤来：先静坐，再计时数脉搏。拿不准的项目选「不确定」——不确定的内容不参与辨证，宁可少填、不可错填。"
+                : "专业模式：直接录入脉象（19 脉）与三部九候，脉诊数据将以完整权重参与辨证。"
+            }
           >
+            {/* 模式切换 */}
+            <div className="mb-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPulseMode("amateur")}
+                className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                  pulseMode === "amateur"
+                    ? "border-cinnabar bg-cinnabar text-white"
+                    : "border-rice-dark text-ink-light hover:border-cinnabar hover:text-cinnabar"
+                }`}
+              >
+                业余自测（有引导）
+              </button>
+              <button
+                type="button"
+                onClick={() => setPulseMode("expert")}
+                className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                  pulseMode === "expert"
+                    ? "border-cinnabar bg-cinnabar text-white"
+                    : "border-rice-dark text-ink-light hover:border-cinnabar hover:text-cinnabar"
+                }`}
+              >
+                专业录入
+              </button>
+            </div>
+
+            {/* 专业模式确认门槛 */}
+            {pulseMode === "expert" && !expertConfirmed && (
+              <div className="rounded-lg border border-amber-400 bg-amber-50 p-4 text-sm text-amber-800">
+                <p className="mb-2 font-medium">专业模式面向具备脉诊基础的执业人员与学习者</p>
+                <p className="mb-3 text-xs leading-relaxed">
+                  脉象录入将以完整权重参与辨证并影响方药参考的出具。若您没有脉诊训练背景，请使用「业余自测」——引导式测量同样能提供有效的辨证线索。
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setExpertConfirmed(true)}
+                  className="rounded-lg bg-cinnabar px-4 py-1.5 text-xs text-white"
+                >
+                  我具备脉诊基础，进入专业模式
+                </button>
+              </div>
+            )}
+
             {pulseSkipped ? (
               <button onClick={() => setPulseSkipped(false)} className="text-xs text-cinnabar underline">
                 已跳过，点击重新填写
               </button>
-            ) : (
-              <div className="space-y-3">
+            ) : pulseMode === "expert" && expertConfirmed ? (
+              /* ———— 专业录入 ———— */
+              <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <p className="text-xs font-medium text-ink-light">脉率（次/分）</p>
                   <input
@@ -374,23 +477,232 @@ export default function IntakePage() {
                     placeholder="如 72"
                     className="w-28 rounded-lg border border-rice-dark px-3 py-1.5 text-sm outline-none focus:border-cinnabar"
                   />
-                  <span className="text-xs text-ink-light/70">参考：&lt;60 偏慢，60~90 正常，&gt;90 偏快</span>
                 </div>
                 <div>
-                  <p className="mb-1 text-xs font-medium text-ink-light">搏动力度</p>
-                  <OptionGroup options={PULSE_OPTIONS.strength} selected={pulse.strength ? [pulse.strength] : []} onToggle={(k) => setPulse((p) => ({ ...p, strength: k as PulseForm["strength"] }))} multi={false} />
+                  <p className="mb-1 text-xs font-medium text-ink-light">总体脉象（多选，按指下所得）</p>
+                  <div className="flex flex-wrap gap-2">
+                    {EXPERT_PULSE_OPTIONS.map((o) => {
+                      const active = (pulse.pulse28 ?? []).includes(o.key);
+                      return (
+                        <button
+                          key={o.key}
+                          type="button"
+                          title={o.desc}
+                          onClick={() =>
+                            setPulse((p) => ({
+                              ...p,
+                              pulse28: toggle(p.pulse28 ?? [], o.key),
+                            }))
+                          }
+                          className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                            active
+                              ? "border-cinnabar bg-cinnabar text-white"
+                              : "border-rice-dark text-ink-light hover:border-cinnabar hover:text-cinnabar"
+                          }`}
+                        >
+                          {o.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1 text-xs text-ink-light/70">悬停各脉象可查看指下特征说明。</p>
                 </div>
-                <div>
-                  <p className="mb-1 text-xs font-medium text-ink-light">位置深浅</p>
-                  <OptionGroup options={PULSE_OPTIONS.depth} selected={pulse.depth ? [pulse.depth] : []} onToggle={(k) => setPulse((p) => ({ ...p, depth: k as PulseForm["depth"] }))} multi={false} />
+
+                {/* 三部九候（选填） */}
+                <div className="rounded-lg border border-rice-dark p-3">
+                  <p className="mb-2 text-xs font-medium text-ink-light">三部九候（选填）：分部记录沉取/浮取所得</p>
+                  <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+                    <OptionGroup options={["左", "右"]} selected={[posDraft.side]} onToggle={(k) => setPosDraft((d) => ({ ...d, side: k as PositionPulse["side"] }))} multi={false} />
+                    <OptionGroup options={["寸", "关", "尺"]} selected={[posDraft.position]} onToggle={(k) => setPosDraft((d) => ({ ...d, position: k as PositionPulse["position"] }))} multi={false} />
+                    <OptionGroup options={["浮", "中", "沉"]} selected={[posDraft.depth]} onToggle={(k) => setPosDraft((d) => ({ ...d, depth: k as PositionPulse["depth"] }))} multi={false} />
+                  </div>
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {EXPERT_PULSE_OPTIONS.map((o) => {
+                      const active = posDraft.qualities.includes(o.key);
+                      return (
+                        <button
+                          key={o.key}
+                          type="button"
+                          title={o.desc}
+                          onClick={() => setPosDraft((d) => ({ ...d, qualities: toggle(d.qualities, o.key) }))}
+                          className={`rounded-full border px-2 py-0.5 text-xs transition ${
+                            active
+                              ? "border-cinnabar bg-cinnabar text-white"
+                              : "border-rice-dark text-ink-light hover:border-cinnabar"
+                          }`}
+                        >
+                          {o.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={posDraft.qualities.length === 0}
+                    onClick={() => {
+                      setPulse((p) => ({ ...p, positions: [...(p.positions ?? []), posDraft] }));
+                      setPosDraft({ side: "左", position: "寸", depth: "中", qualities: [] });
+                    }}
+                    className="rounded-lg border border-cinnabar px-3 py-1 text-xs text-cinnabar disabled:opacity-40"
+                  >
+                    + 添加该部记录
+                  </button>
+                  {(pulse.positions ?? []).length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {(pulse.positions ?? []).map((pos, i) => (
+                        <li key={i} className="flex items-center justify-between rounded bg-rice/60 px-2 py-1 text-xs">
+                          <span>
+                            {pos.side}{pos.position}·{pos.depth}取：
+                            {pos.qualities.map((q) => EXPERT_PULSE_OPTIONS.find((o) => o.key === q)?.label).join("、")}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setPulse((p) => ({ ...p, positions: (p.positions ?? []).filter((_, j) => j !== i) }))}
+                            className="text-ink-light/60 hover:text-red-600"
+                          >
+                            删除
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-                <div>
-                  <p className="mb-1 text-xs font-medium text-ink-light">脉道粗细</p>
-                  <OptionGroup options={PULSE_OPTIONS.width} selected={pulse.width ? [pulse.width] : []} onToggle={(k) => setPulse((p) => ({ ...p, width: k as PulseForm["width"] }))} multi={false} />
+
+                <button onClick={() => setPulseSkipped(true)} className="text-xs text-ink-light/70 underline hover:text-cinnabar">
+                  不采集脉诊？跳过本项
+                </button>
+              </div>
+            ) : pulseMode === "amateur" ? (
+              /* ———— 业余向导 ———— */
+              <div className="space-y-4">
+                {/* 步骤 1：准备 */}
+                <div className="rounded-lg bg-rice/60 p-3 text-xs leading-relaxed text-ink-light">
+                  <p className="mb-1 font-semibold text-ink">第 1 步 · 准备</p>
+                  静坐 5 分钟后再测；测前 30 分钟不喝咖啡浓茶、不剧烈运动；手臂平放、与心脏同高。
                 </div>
-                <div>
-                  <p className="mb-1 text-xs font-medium text-ink-light">节律</p>
-                  <OptionGroup options={PULSE_OPTIONS.rhythm} selected={pulse.rhythm ? [pulse.rhythm] : []} onToggle={(k) => setPulse((p) => ({ ...p, rhythm: k as PulseForm["rhythm"] }))} multi={false} />
+                {/* 步骤 2：定位 */}
+                <div className="rounded-lg bg-rice/60 p-3 text-xs leading-relaxed text-ink-light">
+                  <p className="mb-1 font-semibold text-ink">第 2 步 · 找到脉搏</p>
+                  掌心向上，用另一只手的食指、中指、无名指三指并拢，搭在手腕拇指侧、腕横纹上方，轻按至能感觉到跳动。
+                </div>
+                {/* 步骤 3：计时计数 */}
+                <div className="rounded-lg bg-rice/60 p-3 text-xs leading-relaxed text-ink-light">
+                  <p className="mb-2 font-semibold text-ink">第 3 步 · 计时数脉搏</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!timing ? (
+                      <button type="button" onClick={startTimer} className="rounded-lg bg-cinnabar px-4 py-1.5 text-xs text-white">
+                        {pulse.measuredSeconds ? "再测一次（60 秒）" : "开始计时 60 秒"}
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => stopTimer()} className="rounded-lg bg-cinnabar px-4 py-1.5 text-xs text-white">
+                        计时中…剩余 {secondsLeft} 秒（点击提前结束）
+                      </button>
+                    )}
+                    {pulse.measuredSeconds != null && !timing && (
+                      <>
+                        <span>测了 {pulse.measuredSeconds} 秒，数到</span>
+                        <input
+                          type="number"
+                          min={5}
+                          max={300}
+                          className="w-20 rounded-lg border border-rice-dark px-2 py-1 outline-none focus:border-cinnabar"
+                          placeholder="次数"
+                          onChange={(e) => {
+                            const n = Number(e.target.value);
+                            if (Number.isFinite(n) && n > 0) applyBeatCount(n);
+                          }}
+                        />
+                        <span>次</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span>脉率（次/分）：</span>
+                    <input
+                      type="number"
+                      min={30}
+                      max={180}
+                      value={pulse.rate ?? ""}
+                      onChange={(e) => setPulse((p) => ({ ...p, rate: e.target.value === "" ? null : Number(e.target.value) }))}
+                      placeholder="自动换算或直填"
+                      className="w-28 rounded-lg border border-rice-dark px-2 py-1 outline-none focus:border-cinnabar"
+                    />
+                    <span className="text-ink-light/70">&lt;60 偏慢，60~90 正常，&gt;90 偏快</span>
+                  </div>
+                </div>
+                {/* 步骤 4：复测 */}
+                <div className="rounded-lg bg-rice/60 p-3 text-xs leading-relaxed text-ink-light">
+                  <p className="mb-2 font-semibold text-ink">第 4 步 · 复测一次更可靠（建议）</p>
+                  <div className="flex items-center gap-2">
+                    <span>第二次脉率：</span>
+                    <input
+                      type="number"
+                      min={30}
+                      max={180}
+                      value={pulse.retestRate ?? ""}
+                      onChange={(e) => setPulse((p) => ({ ...p, retestRate: e.target.value === "" ? null : Number(e.target.value) }))}
+                      placeholder="选填"
+                      className="w-24 rounded-lg border border-rice-dark px-2 py-1 outline-none focus:border-cinnabar"
+                    />
+                  </div>
+                  {retestMismatch && (
+                    <p className="mt-2 rounded border border-amber-400 bg-amber-50 p-2 text-amber-800">
+                      两次测量相差超过 10 次/分，本次脉率数据将不参与辨证——请休息片刻后重新测量。
+                    </p>
+                  )}
+                </div>
+                {/* 步骤 5：节律与脉形粗判 */}
+                <div className="space-y-3">
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-ink-light">跳动是否均匀整齐？</p>
+                    <OptionGroup
+                      options={["整齐", "时有停跳", "不确定"]}
+                      selected={pulse.rhythm ? [pulse.rhythm] : []}
+                      onToggle={(k) => setPulse((p) => ({ ...p, rhythm: k === "不确定" ? "" : (k as PulseForm["rhythm"]) }))}
+                      multi={false}
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-ink-light">搏动力度</p>
+                    <OptionGroup
+                      options={[{ key: "有力", label: "明显有力" }, { key: "无力", label: "偏弱、需仔细感受" }, { key: "适中", label: "适中" }, { key: "", label: "不确定" }]}
+                      selected={[pulse.strength]}
+                      onToggle={(k) => setPulse((p) => ({ ...p, strength: k as PulseForm["strength"] }))}
+                      multi={false}
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-ink-light">轻重按压的感觉</p>
+                    <OptionGroup
+                      options={[{ key: "轻按即得", label: "轻轻搭着就清楚" }, { key: "重按才得", label: "要用力按才清楚" }, { key: "", label: "不确定" }]}
+                      selected={[pulse.depth]}
+                      onToggle={(k) => setPulse((p) => ({ ...p, depth: k as PulseForm["depth"] }))}
+                      multi={false}
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-ink-light">指下脉道的感觉</p>
+                    <OptionGroup
+                      options={[{ key: "细如线", label: "细如线" }, { key: "宽大", label: "宽大有力" }, { key: "紧绷如弦", label: "紧绷如按琴弦" }, { key: "", label: "不确定" }]}
+                      selected={[pulse.width]}
+                      onToggle={(k) => setPulse((p) => ({ ...p, width: k as PulseForm["width"] }))}
+                      multi={false}
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-ink-light">以上力度/深浅/粗细的判断，您有把握吗？</p>
+                    <OptionGroup
+                      options={["确定", "不确定"]}
+                      selected={pulse.confidence ? [pulse.confidence] : []}
+                      onToggle={(k) => setPulse((p) => ({ ...p, confidence: k as PulseForm["confidence"] }))}
+                      multi={false}
+                    />
+                    {pulse.confidence === "不确定" && (
+                      <p className="mt-1 text-xs text-ink-light/70">
+                        没关系——脉形判断将不参与辨证，只保留脉率与节律（这两项相对客观）。
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 {/* 进阶自测（默认收起） */}
@@ -432,7 +744,7 @@ export default function IntakePage() {
                   不方便测量？跳过本项
                 </button>
               </div>
-            )}
+            ) : null}
           </Section>
 
           <Section title="六、闻诊自评">
@@ -450,6 +762,13 @@ export default function IntakePage() {
                 <OptionGroup options={LISTENING_OPTIONS.breath} selected={listening.breath ? [listening.breath] : []} onToggle={(k) => setListening((l) => ({ ...l, breath: k as ListeningForm["breath"] }))} multi={false} />
               </div>
             </div>
+          </Section>
+
+          <Section title="七、生活方式与近期体检" hint="选填；生活方式参与辨证参考，体检指标仅用于健康提示">
+            <p className="mb-1 text-xs font-medium text-ink-light">生活方式（多选，无则不选）</p>
+            <OptionGroup options={LIFESTYLE_OPTIONS} selected={lifestyle} onToggle={(k) => setLifestyle((l) => toggle(l, k))} />
+            <p className="mb-1 mt-4 text-xs font-medium text-ink-light">近一年体检异常（多选，无则不选）</p>
+            <OptionGroup options={CHECKUP_OPTIONS} selected={checkup} onToggle={(k) => setCheckup((l) => toggle(l, k))} />
           </Section>
 
           {error && <p className="text-sm text-red-600">{error}</p>}

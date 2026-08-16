@@ -11,6 +11,9 @@ interface VisionResponse {
   scores: Record<string, number>;
   top: { id: string; name: string; score: number }[];
   patterns?: { id: string; name: string; score: number }[];
+  /** 图像质量门控结果（不合格时不产生体征、不入渠道） */
+  quality?: "合格" | "不合格" | null;
+  qualityIssue?: string;
   error?: string;
 }
 
@@ -18,12 +21,13 @@ const MODE_CONFIG: Record<Mode, { title: string; hint: string; weight: number }>
   tongue: {
     title: "舌诊",
     hint: "请在光线充足处自然伸出舌头拍摄，避免食用染色食物（咖啡、火龙果等）后拍摄。",
-    weight: 1.5,
+    // 体质判定以问卷为权威；舌面象反映当下状态，权重低于问卷（3）
+    weight: 1,
   },
   face: {
     title: "面诊",
     hint: "请素颜、正对自然光拍摄面部，避免美颜滤镜，以保证分析准确。",
-    weight: 1.5,
+    weight: 1,
   },
 };
 
@@ -80,13 +84,16 @@ function UploadCard({ mode }: { mode: Mode }) {
       const data = (await res.json()) as VisionResponse;
       if (!res.ok) throw new Error(data.error ?? "分析失败");
       setResult(data);
-      saveChannelResult({
-        channel: mode,
-        scores: data.scores,
-        weight: cfg.weight,
-        note: data.description.replace(/\n/g, "；"),
-        signKeys: data.signKeys,
-      });
+      // 质量门控：不合格照片只提示重拍，不写入渠道结果（不参与综合辨证）
+      if (data.quality !== "不合格") {
+        saveChannelResult({
+          channel: mode,
+          scores: data.scores,
+          weight: cfg.weight,
+          note: data.description.replace(/\n/g, "；"),
+          signKeys: data.signKeys,
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "分析失败");
     } finally {
@@ -120,6 +127,12 @@ function UploadCard({ mode }: { mode: Mode }) {
 
       {result && (
         <div className="mt-4">
+          {result.quality === "不合格" && (
+            <p className="mb-3 rounded-lg border border-amber-400 bg-amber-50 p-3 text-sm text-amber-800">
+              照片质量不合格{result.qualityIssue ? `（${result.qualityIssue}）` : ""}
+              ，本次分析结果不参与综合辨证。请按上方提示重新拍摄。
+            </p>
+          )}
           <h3 className="mb-1 text-sm font-semibold">分析结果</h3>
           <p className="whitespace-pre-wrap rounded-lg bg-rice/60 p-3 text-xs leading-relaxed text-ink-light">
             {result.description}

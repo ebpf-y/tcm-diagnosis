@@ -21,3 +21,15 @@ model Report {
   // 各渠道输入的摘要（JSON 字符串，便于回看）
   inputSummary String   @default("{}")
 }
+
+// 复诊复评记录：针对某份报告的症状复评与证候对比结果
+model FollowUp {
+  id         String   @id @default(cuid())
+  // 关联的初诊报告 id
+  reportId   String
+  createdAt  DateTime @default(now())
+  // 复诊时仍存在的体征 key（JSON 数组字符串）
+  signKeys   String
+  // 初诊 vs 复诊证候对比结果（JSON 字符串）
+  resultJson String
+}

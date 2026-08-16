@@ -648,3 +648,501 @@ describe("buildSequencing 调理顺序推导", () => {
     expect(plan.sequencing[0].targetId).toBe("ganyu_qizhi");
   });
 });
+
+// ------------------------------------------------------------------
+// 个体化方药：方内选方 / 动态加减 / 兼证方剂（本轮升级新增）
+// ------------------------------------------------------------------
+
+describe("buildTreatmentPlan 个体化", () => {
+  it("方内选方：脾气虚 + 便溏 → 参苓白术散排在四君子汤之前并给出理由", () => {
+    const plan = buildTreatmentPlan("piqixu", [], ["sym_diarrhea"])!;
+    expect(plan.formulas[0].formula.key).toBe("shenlingbaizhu");
+    expect(plan.formulas[0].reason).toContain("便溏");
+    // 无症状时按知识库原顺序（四君子汤在前），不附理由
+    const plain = buildTreatmentPlan("piqixu", [], [])!;
+    expect(plain.formulas[0].formula.key).toBe("sijunzi");
+    expect(plain.formulas[0].reason).toBeUndefined();
+  });
+
+  it("动态加减：命中厚腻苔 → 四君子汤生成六君子汤加减建议", () => {
+    const plan = buildTreatmentPlan("piqixu", [], ["coating_thick_greasy"])!;
+    const sijunzi = plan.formulas.find((e) => e.formula.key === "sijunzi")!;
+    expect(sijunzi.appliedMods.some((m) => m.includes("六君子"))).toBe(true);
+    // 未命中体征时无个体化加减
+    const plain = buildTreatmentPlan("piqixu", [], [])!;
+    expect(plain.formulas.find((e) => e.formula.key === "sijunzi")!.appliedMods).toEqual([]);
+  });
+
+  it("合方化裁：combinations 含兼证的择要合入提示（不另立全方）", () => {
+    const plan = buildTreatmentPlan("ganyu_qizhi", ["piqixu"])!;
+    expect(plan.combinations.length).toBe(1);
+    expect(plan.combinations[0].patternId).toBe("piqixu");
+    expect(plan.combinations[0].hint).toContain("四君子");
+    // 新版不再产出兼证全方并列
+    expect(plan.secondaryPlans).toBeUndefined();
+    // 每个证候都有 combineHint
+    for (const id of PATTERN_IDS) {
+      expect(PATTERNS[id].combineHint.length, id).toBeGreaterThan(0);
+    }
+  });
+
+  it("新增方剂知识库闭合：formulaKeys 引用的方剂均存在且字段齐全", () => {
+    for (const key of [
+      "sini", "shashen_maidong", "bugan", "yangxin", "shiquan_dabu",
+      "danzhi_xiaoyao", "jingfang_baidu", "sangju", "taohong_siwu",
+    ]) {
+      const f = FORMULAS[key];
+      expect(f, key).toBeDefined();
+      expect(f.ingredients.length).toBeGreaterThan(0);
+      expect(f.analysis.length).toBeGreaterThan(0);
+      expect(f.patternIds.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ------------------------------------------------------------------
+// 四诊合参：覆盖率感知归一 / 多渠道互证 / 冲突检测 / 舌面结构化映射
+// ------------------------------------------------------------------
+
+import {
+  detectConflicts,
+  visionFindingsToSigns,
+  CHANNEL_CATEGORIES,
+} from "@/lib/engine";
+
+describe("scorePatterns 覆盖率感知归一", () => {
+  it("限定实际采集类别后归一分高于全类别归一（渠道缺失不再稀释得分）", () => {
+    const signKeys = ["sym_cold", "sym_diarrhea"];
+    const full = scorePatterns(signKeys);
+    const covered = scorePatterns(signKeys, { availableCategories: ["symptom"] });
+    const p1 = full.find((h) => h.id === "piyangxu")!;
+    const p2 = covered.find((h) => h.id === "piyangxu")!;
+    expect(p2.score).toBeGreaterThan(p1.score);
+    // 原始加权分不受归一影响
+    expect(p2.raw).toBe(p1.raw);
+  });
+
+  it("缺省不传类别时行为与旧版一致（全类别归一）", () => {
+    const a = scorePatterns(["sym_cold"]);
+    const b = scorePatterns(["sym_cold"], {});
+    expect(a.find((h) => h.id === "piyangxu")!.score).toBe(
+      b.find((h) => h.id === "piyangxu")!.score
+    );
+  });
+});
+
+describe("scorePatterns 多渠道互证", () => {
+  it("同一证候被 ≥2 个渠道命中 → corroborated=true 且得分加成（封顶 100）", () => {
+    const signKeys = ["sym_cold", "tongue_pale"];
+    const plain = scorePatterns(signKeys);
+    const sourced = scorePatterns(signKeys, {
+      sources: { intake: ["sym_cold"], tongue: ["tongue_pale"] },
+    });
+    const base = plain.find((h) => h.id === "piyangxu")!;
+    const corr = sourced.find((h) => h.id === "piyangxu")!;
+    expect(corr.corroborated).toBe(true);
+    expect(corr.sources).toEqual(expect.arrayContaining(["intake", "tongue"]));
+    expect(corr.score).toBeGreaterThan(base.score);
+    expect(corr.score).toBeLessThanOrEqual(100);
+  });
+
+  it("全部体征来自同一渠道 → 不互证、不加成", () => {
+    const sourced = scorePatterns(["sym_cold", "sym_diarrhea"], {
+      sources: { intake: ["sym_cold", "sym_diarrhea"] },
+    });
+    const h = sourced.find((x) => x.id === "piyangxu")!;
+    expect(h.corroborated).toBe(false);
+    expect(h.sources).toEqual(["intake"]);
+  });
+});
+
+describe("detectConflicts 信息矛盾检测", () => {
+  it("畏寒 + 舌红 → 寒热矛盾提示", () => {
+    const conflicts = detectConflicts({ signKeys: ["sym_cold", "tongue_red"] });
+    expect(conflicts.length).toBe(1);
+    expect(conflicts[0]).toContain("寒热");
+  });
+
+  it("平和质 + 厚腻苔 → 体质与舌象矛盾提示", () => {
+    const conflicts = detectConflicts({
+      signKeys: ["coating_thick_greasy"],
+      isBalanced: true,
+    });
+    expect(conflicts.length).toBe(1);
+    expect(conflicts[0]).toContain("平和质");
+  });
+
+  it("无矛盾时返回空数组", () => {
+    expect(detectConflicts({ signKeys: ["sym_cold", "tongue_pale"] })).toEqual([]);
+  });
+});
+
+describe("visionFindingsToSigns 舌面结构化映射", () => {
+  it("舌色紫黯 → tongue_purple；绛舌 → tongue_red；淡红不产生体征", () => {
+    expect(visionFindingsToSigns("tongue", { 舌色: "紫黯" })).toContain("tongue_purple");
+    expect(visionFindingsToSigns("tongue", { 舌色: "绛" })).toContain("tongue_red");
+    expect(visionFindingsToSigns("tongue", { 舌色: "淡红" })).toEqual([]);
+  });
+
+  it("苔质薄+腻 → 只判厚腻不判薄白（互斥规则）", () => {
+    const keys = visionFindingsToSigns("tongue", { 苔色: "白", 苔质: ["薄", "腻"] });
+    expect(keys).toContain("coating_thick_greasy");
+    expect(keys).not.toContain("coating_thin_white");
+    const thin = visionFindingsToSigns("tongue", { 苔色: "白", 苔质: ["薄"] });
+    expect(thin).toContain("coating_thin_white");
+  });
+
+  it("面象枚举字段映射：萎黄/多油/痤疮/紫黯唇", () => {
+    const keys = visionFindingsToSigns("face", {
+      面色: "萎黄",
+      油脂: "多",
+      痤疮: "有",
+      浮肿: "无",
+      黑眼圈: "无",
+      唇色: "紫黯",
+    });
+    expect(keys).toEqual(
+      expect.arrayContaining(["face_yellow", "face_oily", "face_acne", "face_dark"])
+    );
+    expect(keys).not.toContain("face_edema");
+  });
+});
+
+describe("关键词去碰撞", () => {
+  it("「不想喝水」只命中口淡不渴，不误命中口干咽燥", () => {
+    const keys = matchSignsFromText("口淡不渴，不想喝水", "symptom");
+    expect(keys).toContain("sym_no_thirst");
+    expect(keys).not.toContain("sym_dry");
+  });
+
+  it("渠道→体征类别映射覆盖全部采集渠道", () => {
+    for (const ch of ["intake", "chat", "tongue", "face", "questionnaire"]) {
+      expect(CHANNEL_CATEGORIES[ch]).toBeDefined();
+    }
+    expect(CHANNEL_CATEGORIES.intake).toEqual(
+      expect.arrayContaining(["symptom", "pulse", "listening"])
+    );
+  });
+});
+
+// ------------------------------------------------------------------
+// 君臣佐使结构化方解（formula-roles.ts）
+// ------------------------------------------------------------------
+
+import { FORMULA_ROLES } from "@/lib/tcm/formula-roles";
+
+describe("君臣佐使结构化方解", () => {
+  it("每首方剂均有结构化方解，且 key 闭合", () => {
+    for (const key of Object.keys(FORMULAS)) {
+      const roles = FORMULA_ROLES[key];
+      expect(roles, key).toBeDefined();
+      expect(roles.length).toBeGreaterThan(0);
+      // 每首方须有君药
+      expect(roles.some((r) => r.role === "君"), key).toBe(true);
+      for (const r of roles) {
+        expect(["君", "臣", "佐", "使"]).toContain(r.role);
+        expect(r.herbs.length).toBeGreaterThan(0);
+        expect(r.rationale.length).toBeGreaterThan(0);
+      }
+    }
+    // 不引用不存在的方剂
+    for (const key of Object.keys(FORMULA_ROLES)) {
+      expect(FORMULAS[key], key).toBeDefined();
+    }
+  });
+
+  it("方解中的药味均能在组成中找到（含括号异名的模糊匹配）", () => {
+    for (const [key, roles] of Object.entries(FORMULA_ROLES)) {
+      const names = FORMULAS[key].ingredients.map((i) => i.name);
+      for (const r of roles) {
+        for (const herb of r.herbs) {
+          const matched = names.some(
+            (n) => n.includes(herb) || herb.includes(n.replace(/（.*）/, ""))
+          );
+          expect(matched, `${key} 的 ${r.role} 药「${herb}」`).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+// ------------------------------------------------------------------
+// 专家评审驱动的优化（P0~P3）：禁忌校验 / 脉形降权 / 合方化裁 /
+// 慢性病程 / 体检提示 / 痞证与经方 / 穴位定位
+// ------------------------------------------------------------------
+
+import {
+  checkContraindications,
+  buildCheckupAdvisories,
+} from "@/lib/engine";
+import { acupointLocations } from "@/lib/tcm/acupoints";
+import { CONTRA_TAGS } from "@/lib/tcm/formula-tuning";
+
+describe("checkContraindications 禁忌交叉校验", () => {
+  it("高血压病史 × 补中益气汤（feiqixu 方案）→ 警示", () => {
+    const plan = buildTreatmentPlan("feiqixu")!;
+    const warnings = checkContraindications({
+      formulaKeys: plan.formulas.map((f) => f.formula.key),
+      history: ["hypertension"],
+    });
+    expect(warnings.some((w) => w.formulaKey === "buzhong_yiqi")).toBe(true);
+    expect(warnings[0].conditions).toContain("高血压");
+  });
+
+  it("在服华法林 × 血府逐瘀汤 → 抗凝警示", () => {
+    const warnings = checkContraindications({
+      formulaKeys: ["xuefu_zhuyu"],
+      medications: "华法林",
+    });
+    expect(warnings.length).toBe(1);
+    expect(warnings[0].conditions).toContain("正在服用抗凝/抗血小板药物");
+  });
+
+  it("当前发热（sym_fever）× 滋补方 → 感冒发热停服警示", () => {
+    const warnings = checkContraindications({
+      formulaKeys: ["sijunzi", "liuwei_dihuang"],
+      signKeys: ["sym_fever"],
+    });
+    expect(warnings.length).toBe(2);
+  });
+
+  it("无相关条件 → 无警示；禁忌标签均指向存在的方剂", () => {
+    expect(checkContraindications({ formulaKeys: ["sijunzi"] })).toEqual([]);
+    for (const key of Object.keys(CONTRA_TAGS)) expect(FORMULAS[key], key).toBeDefined();
+  });
+});
+
+describe("脉形自测降权（weightScale）", () => {
+  it("脉沉原始分按 0.5 计入，但命中明细保留原始权重与角色", () => {
+    const hits = scorePatterns(["pulse_chen"]);
+    const piyangxu = hits.find((h) => h.id === "piyangxu")!;
+    expect(piyangxu.raw).toBe(1); // 2 × 0.5
+    expect(piyangxu.hits[0].weight).toBe(2);
+    expect(piyangxu.hits[0].role).toBe("舌脉");
+  });
+
+  it("客观脉率（迟/数）不降权", () => {
+    const hits = scorePatterns(["pulse_chi"]);
+    expect(hits.find((h) => h.id === "piyangxu")!.raw).toBe(2);
+  });
+});
+
+describe("慢性病程提示（久病入络）", () => {
+  it("chronic: true → plan 附久病入络提示；缺省不附", () => {
+    const chronic = buildTreatmentPlan("piqixu", [], [], { chronic: true })!;
+    expect(chronic.chronicNote).toContain("久病入络");
+    expect(buildTreatmentPlan("piqixu")!.chronicNote).toBeUndefined();
+  });
+});
+
+describe("体检指标健康提示", () => {
+  it("已知指标出提示，未知 key 忽略", () => {
+    const advisories = buildCheckupAdvisories(["blood_lipid", "unknown_key"]);
+    expect(advisories.length).toBe(1);
+    expect(advisories[0]).toContain("血脂");
+  });
+});
+
+describe("寒热错杂痞证与新增经方", () => {
+  it("心下痞满 + 呕恶 + 肠鸣 → 寒热错杂痞证居首", () => {
+    const hits = scorePatterns(["sym_stuffiness", "sym_nausea", "sym_borborygmus"]);
+    expect(hits[0].id).toBe("hanre_cuoza");
+    expect(hits[0].hasChiefHit).toBe(true);
+  });
+
+  it("痞证方案含半夏泻心汤且命中选方理由", () => {
+    const plan = buildTreatmentPlan("hanre_cuoza", [], ["sym_stuffiness", "sym_nausea"])!;
+    expect(plan.formulas[0].formula.key).toBe("banxia_xiexin");
+    expect(plan.formulas[0].reason).toContain("心下痞满");
+  });
+
+  it("风寒表虚有汗 → 桂枝汤排在麻黄汤前", () => {
+    const plan = buildTreatmentPlan("fenghan_shubiao", [], ["sym_sweat"])!;
+    expect(plan.formulas[0].formula.key).toBe("guizhi");
+  });
+});
+
+describe("穴位标准定位", () => {
+  it("组合穴名拆分查表，括号注记剥离", () => {
+    const locs = acupointLocations("脾俞、胃俞");
+    expect(locs.length).toBe(2);
+    expect(locs[0].location).toContain("胸椎");
+    expect(acupointLocations("神阙（隔姜灸）")[0].location).toContain("脐");
+  });
+
+  it("知识库用到的穴位均有定位（组合拆分后）", () => {
+    for (const id of PATTERN_IDS) {
+      for (const acu of PATTERNS[id].wellness.acupoint) {
+        if (typeof acu === "string") continue;
+        for (const part of acupointLocations(acu.name)) {
+          expect(part.location, `${id} 的穴位「${part.name}」缺定位`).toBeDefined();
+        }
+      }
+    }
+  });
+});
+
+describe("intake 生活方式与既往史贯通", () => {
+  it("lifestyle 选项直接映射为 life_* 体征", () => {
+    const keys = intakeToSigns(emptyIntake({ lifestyle: ["life_cold_drink", "life_late_sleep"] }));
+    expect(keys).toEqual(expect.arrayContaining(["life_cold_drink", "life_late_sleep"]));
+  });
+
+  it("intakeSummary 含病史/用药/生活方式/体检摘要", () => {
+    const note = intakeSummary(
+      emptyIntake({
+        chiefComplaints: ["cold"],
+        history: ["hypertension"],
+        medications: "苯磺酸氨氯地平",
+        lifestyle: ["life_cold_drink"],
+        checkup: ["blood_lipid"],
+      })
+    );
+    expect(note).toContain("高血压");
+    expect(note).toContain("苯磺酸氨氯地平");
+    expect(note).toContain("常食冷饮");
+    expect(note).toContain("血脂异常");
+  });
+});
+
+// ------------------------------------------------------------------
+// 脉诊双模式（业余向导 / 专家录入）
+// ------------------------------------------------------------------
+
+import { EXPERT_PULSE_OPTIONS } from "@/lib/tcm/intake";
+
+describe("脉诊双模式：intakeToSigns", () => {
+  it("业余模式：测量 <30 秒 → 脉率不可信，不产迟/数体征", () => {
+    const keys = intakeToSigns(
+      emptyIntake({
+        pulse: { rate: 55, strength: "", depth: "", width: "", rhythm: "", measuredSeconds: 15 },
+      })
+    );
+    expect(keys).not.toContain("pulse_chi");
+    // 测量 60 秒正常产出
+    const ok = intakeToSigns(
+      emptyIntake({
+        pulse: { rate: 55, strength: "", depth: "", width: "", rhythm: "", measuredSeconds: 60 },
+      })
+    );
+    expect(ok).toContain("pulse_chi");
+  });
+
+  it("业余模式：复测差异 >10 次/分 → 不产迟/数；差异小 → 产出", () => {
+    const bad = intakeToSigns(
+      emptyIntake({
+        pulse: { rate: 55, strength: "", depth: "", width: "", rhythm: "", measuredSeconds: 60, retestRate: 78 },
+      })
+    );
+    expect(bad).not.toContain("pulse_chi");
+    const good = intakeToSigns(
+      emptyIntake({
+        pulse: { rate: 55, strength: "", depth: "", width: "", rhythm: "", measuredSeconds: 60, retestRate: 60 },
+      })
+    );
+    expect(good).toContain("pulse_chi");
+  });
+
+  it("业余模式：confidence=不确定 → 脉形不产体征，脉率/节律仍保留", () => {
+    const keys = intakeToSigns(
+      emptyIntake({
+        pulse: {
+          rate: 55, strength: "无力", depth: "重按才得", width: "细如线", rhythm: "时有停跳",
+          measuredSeconds: 60, confidence: "不确定",
+        },
+      })
+    );
+    expect(keys).toContain("pulse_chi");
+    expect(keys).toContain("pulse_jiedai");
+    expect(keys).not.toContain("pulse_ruo");
+    expect(keys).not.toContain("pulse_chen");
+    expect(keys).not.toContain("pulse_xi");
+  });
+
+  it("专家模式：19 脉直接录入 + 三部九候（两部弱→该手偏弱）", () => {
+    const keys = intakeToSigns(
+      emptyIntake({
+        pulse: {
+          rate: 58, strength: "", depth: "", width: "", rhythm: "",
+          mode: "expert",
+          pulse28: ["pulse_chen", "pulse_se"],
+          positions: [
+            { side: "左", position: "寸", depth: "沉", qualities: ["pulse_ruo"] },
+            { side: "左", position: "关", depth: "沉", qualities: ["pulse_ruo"] },
+          ],
+        },
+      })
+    );
+    expect(keys).toEqual(expect.arrayContaining(["pulse_chen", "pulse_se"]));
+    expect(keys).toContain("pulse_chi"); // 专家模式脉率仍客观产出
+    expect(keys).toContain("pulse_cun_weak");
+    expect(keys).toContain("pulse_guan_weak");
+    expect(keys).toContain("pulse_left_weak"); // 左两部偏弱
+    expect(keys).not.toContain("pulse_right_weak");
+    // 专家模式不读业余粗判字段
+    expect(keys).not.toContain("pulse_fu");
+  });
+
+  it("专家脉象选项均指向存在的体征", () => {
+    for (const o of EXPERT_PULSE_OPTIONS) {
+      expect(SIGNS.some((s) => s.key === o.key), o.key).toBe(true);
+    }
+  });
+});
+
+describe("脉诊双模式：scorePatterns 权重", () => {
+  it("expert 模式脉象不降权，amateur/缺省降权", () => {
+    const expert = scorePatterns(["pulse_chen"], { pulseMode: "expert" });
+    expect(expert.find((h) => h.id === "piyangxu")!.raw).toBe(2);
+    const amateur = scorePatterns(["pulse_chen"], { pulseMode: "amateur" });
+    expect(amateur.find((h) => h.id === "piyangxu")!.raw).toBe(1);
+    const legacy = scorePatterns(["pulse_chen"]);
+    expect(legacy.find((h) => h.id === "piyangxu")!.raw).toBe(1);
+  });
+
+  it("专家脉象案例：沉细涩 + 刺痛 → 气滞血瘀居前", () => {
+    const hits = scorePatterns(["sym_pain", "pulse_se", "pulse_xian"], { pulseMode: "expert" });
+    expect(hits[0].id).toBe("qizhi_xueyu");
+  });
+});
+
+describe("脉症从舍提示", () => {
+  it("脉迟 + 五心烦热 → 脉症不符提示", () => {
+    const conflicts = detectConflicts({ signKeys: ["pulse_chi", "sym_heat"] });
+    expect(conflicts.some((c) => c.includes("脉症不符"))).toBe(true);
+  });
+});
+
+describe("28 脉齐备性", () => {
+  it("专家脉象选项覆盖 28 脉（结代合并、另附疾脉，共 27 项）", () => {
+    expect(EXPERT_PULSE_OPTIONS.length).toBe(27);
+    // 经典 28 脉每一脉均有对应选项（结、代合并为 pulse_jiedai）
+    const classic = ["浮","沉","迟","数","滑","涩","虚","实","长","短","洪","微","紧","缓","芤","弦","革","牢","濡","弱","散","细","伏","动","促","结","代"];
+    const labels = EXPERT_PULSE_OPTIONS.map((o) => o.label).join("");
+    for (const m of classic) {
+      expect(labels.includes(m) || (m === "结" || m === "代") && labels.includes("结代"), m).toBe(true);
+    }
+  });
+
+  it("新增脉象参与辨证：革脉 + 面色苍白 + 月经量少 → 气血两虚居前", () => {
+    const hits = scorePatterns(["face_pale", "sym_menses_light", "pulse_ge"], { pulseMode: "expert" });
+    expect(hits.slice(0, 2).map((h) => h.id)).toContain("qixue_liangxu");
+  });
+
+  it("三部九候：虚脉计入偏弱判定", () => {
+    const keys = intakeToSigns(
+      emptyIntake({
+        pulse: {
+          rate: null, strength: "", depth: "", width: "", rhythm: "",
+          mode: "expert",
+          pulse28: [],
+          positions: [
+            { side: "右", position: "关", depth: "中", qualities: ["pulse_xu"] },
+            { side: "右", position: "尺", depth: "沉", qualities: ["pulse_xu"] },
+          ],
+        },
+      })
+    );
+    expect(keys).toEqual(expect.arrayContaining(["pulse_guan_weak", "pulse_chi_weak", "pulse_right_weak"]));
+  });
+});

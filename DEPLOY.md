@@ -144,6 +144,10 @@ pm2 status
 pm2 startup
 ```
 
+> **数据库 schema 说明**：`deploy.sh` 每次执行都会跑 `npx prisma db push`，
+> 新增表（如复诊记录 `FollowUp` 表）会在更新时自动创建，已有报告数据不受影响，
+> 无需手动迁移。
+
 ## 8. 数据备份
 
 报告数据存于 SQLite 单文件 `prisma/dev.db`，备份即拷贝该文件：

@@ -43,6 +43,8 @@ export function buildAnalysisPrompt(input: {
   chiefComplaint?: string;
   /** 调理顺序摘要（引擎推导的分步思路） */
   sequencingSummary?: string;
+  /** 信息矛盾点（四诊合参冲突检测结果） */
+  conflicts?: string[];
 }): string {
   return `你是一名资深中医师。规则引擎已完成辨证，主证为「${input.patternName}」` +
     `（辨证符合度 ${input.patternScore} 分）` +
@@ -51,10 +53,16 @@ export function buildAnalysisPrompt(input: {
     (input.chiefComplaint ? `来访者主诉：${input.chiefComplaint}\n` : "") +
     `命中的症状体征：${input.hitSummary.join("；")}。\n` +
     (input.sequencingSummary ? `调理顺序（引擎推导）：${input.sequencingSummary}\n` : "") +
+    (input.conflicts && input.conflicts.length > 0
+      ? `采集信息中存在以下矛盾点：${input.conflicts.join("；")}。\n`
+      : "") +
     `各渠道采集信息：\n${input.channelNotes.map((n) => "- " + n).join("\n")}\n` +
     `请撰写 300 字以内的「辨证分析」论述段，要求：临床记录式口吻，规范中医术语；` +
     (input.chiefComplaint ? `首先回应主诉，说明主诉与主证的对应关系；` : "") +
     `围绕主证阐明病位、病性、病机推演；说明命中症状与证候的对应关系；` +
-    `如有兼证，简述其与主证的传变或相兼关系（如肝郁及脾、久病及肾），并与调理顺序相呼应。` +
+    `如有兼证，简述其与主证的传变或相兼关系（如肝郁及脾、久病及肾），并与调理顺序相呼应；` +
+    (input.conflicts && input.conflicts.length > 0
+      ? `对矛盾信息需说明取舍依据（如以舌象为凭、以脉为凭），不可回避；`
+      : "") +
     `不得更改辨证结论，不涉及具体方药（方药部分另有知识库给出）。`;
 }

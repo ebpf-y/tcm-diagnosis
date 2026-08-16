@@ -27,7 +27,8 @@ export type PatternId =
   | "shire_yunpi" // 湿热蕴脾证
   | "weiyinxu" // 胃阴虚证
   | "xinshen_bujiao" // 心肾不交证
-  | "qizhi_xueyu"; // 气滞血瘀证
+  | "qizhi_xueyu" // 气滞血瘀证
+  | "hanre_cuoza"; // 寒热错杂痞证
 
 /** 穴位保健条目 */
 export interface AcupointAdvice {
@@ -75,6 +76,8 @@ export interface Pattern {
   treatment: string;
   /** 关联经典方剂（formulas.ts 的 key） */
   formulaKeys: string[];
+  /** 合方化裁提示：该证作为兼证时，择要合入主方的药味（不全方并列） */
+  combineHint: string;
   /** 关联食疗（diet-therapy.ts 的 key） */
   dietKeys: string[];
   /** 保健方案 */
@@ -95,6 +98,7 @@ export const PATTERNS: Record<PatternId, Pattern> = {
       "脾主运化，为气血生化之源。脾气亏虚则运化失健，水谷不化，故纳呆便溏；气血生化乏源，故神疲乏力。《脾胃论》云：「脾胃之气既伤，而元气亦不能充，而诸病之所由生也。」",
     treatment: "健脾益气",
     formulaKeys: ["sijunzi", "shenlingbaizhu"],
+    combineHint: "酌加党参、白术、茯苓，健脾益气（四君子汤意）",
     dietKeys: ["shanyao_zhou", "shenqi_yimi_zhou"],
     wellness: {
       acupoint: [
@@ -140,6 +144,7 @@ export const PATTERNS: Record<PatternId, Pattern> = {
       "脾阳亏虚，温煦失职，阴寒内生，故脘腹冷痛、畏寒肢冷；阳不化气，水谷不运，故便溏清稀。《素问·至真要大论》云：「诸湿肿满，皆属于脾。」",
     treatment: "温中健脾",
     formulaKeys: ["lizhong", "fuzilizhong"],
+    combineHint: "酌加干姜、白术，温中散寒（理中汤意；寒甚者医师可酌加制附子）",
     dietKeys: ["ganjiang_zhou", "danggui_shengjiang_yangrou"],
     wellness: {
       acupoint: [
@@ -175,6 +180,7 @@ export const PATTERNS: Record<PatternId, Pattern> = {
       "肾阳为一身阳气之根，主温煦气化。肾阳不足则腰膝失温、气化无权，故腰膝冷痛、小便清长；火不暖土则五更泄泻。《素问·生气通天论》云：「阳气者，若天与日，失其所则折寿而不彰。」",
     treatment: "温补肾阳",
     formulaKeys: ["jingui_shenqi", "yougui"],
+    combineHint: "酌加肉桂、制附子、熟地，温补肾阳（金匮肾气丸意）",
     dietKeys: ["duzhong_yangrou", "hutaoren_zhou"],
     wellness: {
       acupoint: [
@@ -215,6 +221,7 @@ export const PATTERNS: Record<PatternId, Pattern> = {
       "肾阴为一身阴液之本，肾阴亏虚则阴不制阳、虚火内生，故五心烦热、潮热盗汗；腰为肾之府，肾精不足则腰膝酸软。《素问·调经论》云：「阴虚则内热。」",
     treatment: "滋补肾阴",
     formulaKeys: ["liuwei_dihuang", "zuogui"],
+    combineHint: "酌加熟地、山萸肉、枸杞子，滋补肾阴（六味地黄丸意）",
     dietKeys: ["gouqi_sangshen_zhou", "baihe_yiner_geng"],
     wellness: {
       acupoint: [
@@ -250,7 +257,8 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "思虑过度，劳伤心脾：心血不足则神不守舍，故心悸失眠健忘；脾气亏虚则运化失健，故纳呆乏力。严用和《济生方》云归脾汤「治思虑过度，劳伤心脾，健忘怔忡」。",
     treatment: "益气补血，健脾养心",
-    formulaKeys: ["guipi"],
+    formulaKeys: ["guipi", "yangxin"],
+    combineHint: "酌加黄芪、当归、酸枣仁，益气养血安神（归脾汤意）",
     dietKeys: ["longyan_lianzi_zhou", "hongzao_danggui_dan"],
     wellness: {
       acupoint: [
@@ -285,7 +293,8 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "气为血之帅，血为气之母。气虚则推动无力，血虚则濡养失职，气血俱亏则头面失荣、脏腑失养。《素问·调经论》云：「血气不和，百病乃变化而生。」",
     treatment: "气血双补",
-    formulaKeys: ["bazhen"],
+    formulaKeys: ["bazhen", "shiquan_dabu"],
+    combineHint: "酌加黄芪、当归、熟地，气血双补（八珍汤意）",
     dietKeys: ["danggui_shengjiang_yangrou", "hongzao_danggui_dan"],
     wellness: {
       acupoint: [
@@ -320,7 +329,8 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "肝主疏泄，调畅气机情志。情志不遂则肝失条达、气机郁滞，故胁胀太息、情志抑郁。《素问·举痛论》云：「百病生于气也。」",
     treatment: "疏肝解郁，理气畅中",
-    formulaKeys: ["chaihu_shugan"],
+    formulaKeys: ["chaihu_shugan", "sini", "xiaochaihu"],
+    combineHint: "酌加柴胡、香附、白芍，疏肝解郁（柴胡疏肝散意）",
     dietKeys: ["meiguihua_cha", "foshou_chenpi_zhou"],
     wellness: {
       acupoint: [
@@ -370,7 +380,8 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "肝气郁结，横逆犯脾，脾失健运，故见肝郁与脾虚并见之候。《金匮要略》云：「见肝之病，知肝传脾，当先实脾。」",
     treatment: "疏肝健脾",
-    formulaKeys: ["xiaoyao"],
+    formulaKeys: ["xiaoyao", "danzhi_xiaoyao"],
+    combineHint: "酌加柴胡、白术、茯苓，疏肝健脾（逍遥散意）",
     dietKeys: ["foshou_chenpi_zhou", "shanyao_zhou"],
     wellness: {
       acupoint: [
@@ -406,7 +417,8 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "肝气郁久化火，或素体阳盛，肝火循经上炎，故头目胀痛、面红目赤；火扰心神则急躁失眠。《素问·至真要大论》云：「诸风掉眩，皆属于肝。」",
     treatment: "清肝泻火",
-    formulaKeys: ["longdan_xiegan"],
+    formulaKeys: ["longdan_xiegan", "danzhi_xiaoyao"],
+    combineHint: "酌加黄芩、栀子、牡丹皮，清泄肝火",
     dietKeys: ["juhua_juemingzi_cha", "lvdou_tang"],
     wellness: {
       acupoint: [
@@ -442,7 +454,8 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "肝藏血，开窍于目，其华在爪，主筋。肝血不足则目失濡养、筋爪失荣。《素问·五脏生成》云：「肝受血而能视，足受血而能步，掌受血而能握，指受血而能摄。」",
     treatment: "滋补肝血",
-    formulaKeys: ["siwu"],
+    formulaKeys: ["siwu", "bugan"],
+    combineHint: "酌加当归、白芍、熟地，养血柔肝（四物汤意）",
     dietKeys: ["zhugan_bocai", "gouqi_sangshen_zhou"],
     wellness: {
       acupoint: [
@@ -478,6 +491,7 @@ export const PATTERNS: Record<PatternId, Pattern> = {
       "肺主气司呼吸，外合皮毛。肺气亏虚则呼吸功能减弱、卫表不固，故气短自汗、反复感冒。《素问·至真要大论》云：「诸气膹郁，皆属于肺。」",
     treatment: "补益肺气，固表止汗",
     formulaKeys: ["yupingfeng", "buzhong_yiqi"],
+    combineHint: "酌加黄芪、防风、白术，益气固表（玉屏风散意）",
     dietKeys: ["huangqi_dunji", "shenqi_yimi_zhou"],
     wellness: {
       acupoint: [
@@ -512,7 +526,8 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "风寒外袭，卫阳被遏，腠理闭塞，故恶寒无汗、头身疼痛。《伤寒论》云：「太阳病，头痛发热，身疼腰痛，骨节疼痛，恶风无汗而喘者，麻黄汤主之。」",
     treatment: "辛温解表，宣肺散寒",
-    formulaKeys: ["mahuang"],
+    formulaKeys: ["mahuang", "jingfang_baidu", "guizhi"],
+    combineHint: "酌加荆芥、防风、苏叶，疏风散寒",
     dietKeys: ["shengjiang_hongtang_shui", "congbai_douchi_tang"],
     wellness: {
       acupoint: [
@@ -542,7 +557,8 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "风热之邪犯表，卫表失和，热邪上扰，故发热咽痛口渴。《温病条辨》云：「但热不恶寒而渴者，辛凉平剂银翘散主之。」",
     treatment: "辛凉解表，疏风清热",
-    formulaKeys: ["yinqiao"],
+    formulaKeys: ["yinqiao", "sangju"],
+    combineHint: "酌加金银花、连翘、薄荷，疏风清热",
     dietKeys: ["sangju_cha", "bingtang_xueli"],
     wellness: {
       acupoint: [
@@ -572,7 +588,8 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "脾失健运，水湿内停，聚湿成痰，痰湿中阻则气机升降失常。《金匮要略》云：「病痰饮者，当以温药和之。」《丹溪心法》云：「百病多有兼痰者。」",
     treatment: "燥湿化痰，理气和中",
-    formulaKeys: ["erchen", "pingwei"],
+    formulaKeys: ["erchen", "pingwei", "wuling"],
+    combineHint: "酌加半夏、陈皮、茯苓，燥湿化痰（二陈汤意）",
     dietKeys: ["yimi_donggua_tang", "shenqi_yimi_zhou"],
     wellness: {
       acupoint: [
@@ -608,6 +625,7 @@ export const PATTERNS: Record<PatternId, Pattern> = {
       "湿热之邪蕴结中焦，脾胃升降失司，湿性黏滞、热性炎上，故痞闷口黏、便溏溲黄并见。薛生白《湿热条辨》云：「湿热证，始恶寒，后但热不寒，汗出胸痞，舌白，口渴不引饮。」",
     treatment: "清热利湿，醒脾和中",
     formulaKeys: ["ganlu_xiaodu", "huoxiang_zhengqi"],
+    combineHint: "酌加黄芩、滑石、茵陈，清热利湿",
     dietKeys: ["lvdou_yimi_tang", "yimi_donggua_tang"],
     wellness: {
       acupoint: [
@@ -642,7 +660,8 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "胃喜润恶燥，热病后期或嗜食辛燥，耗伤胃阴，胃失濡润、和降失常，故饥不欲食、脘痛咽干。叶天士《临证指南医案》云：「阳明燥土，得阴自安。」",
     treatment: "养阴益胃",
-    formulaKeys: ["yiwei"],
+    formulaKeys: ["yiwei", "shashen_maidong"],
+    combineHint: "酌加沙参、麦冬、玉竹，养阴益胃",
     dietKeys: ["shashen_maidong_zhou", "baihe_yiner_geng"],
     wellness: {
       acupoint: [
@@ -673,6 +692,7 @@ export const PATTERNS: Record<PatternId, Pattern> = {
       "心属火居上，肾属水居下，正常情况下心火下温肾水、肾水上济心火。肾阴亏于下则心火亢于上，水火不济，故心烦不寐与腰膝并见。《伤寒论》云：「少阴病，得之二三日以上，心中烦，不得卧，黄连阿胶汤主之。」",
     treatment: "滋阴降火，交通心肾",
     formulaKeys: ["tianwang_buxin", "jiaotai", "suanzaoren"],
+    combineHint: "酌加酸枣仁、黄连、肉桂，交通心肾",
     dietKeys: ["lianzi_baihe_zhou", "gouqi_sangshen_zhou"],
     wellness: {
       acupoint: [
@@ -708,7 +728,8 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "气为血帅，气机郁滞则血行不畅，久而成瘀，不通则痛，故刺痛固定、入夜加重。《素问·举痛论》云：「经脉流行不止，环周不休，寒气入经而稽迟，泣而不行。」",
     treatment: "行气活血，化瘀止痛",
-    formulaKeys: ["xuefu_zhuyu"],
+    formulaKeys: ["xuefu_zhuyu", "taohong_siwu"],
+    combineHint: "酌加桃仁、红花、川芎，活血化瘀",
     dietKeys: ["shanzha_hongtang_shui", "meiguihua_cha"],
     wellness: {
       acupoint: [
@@ -730,6 +751,42 @@ export const PATTERNS: Record<PatternId, Pattern> = {
       {
         target: "ganyu_qizhi",
         mechanism: "血瘀多由气滞日久发展而来，气滞为血瘀之始因，治瘀必先行气",
+      },
+    ],
+  },
+  hanre_cuoza: {
+    id: "hanre_cuoza",
+    name: "寒热错杂痞证",
+    category: "脏腑辨证",
+    chiefSymptoms: ["心下痞满（按之柔软、满而不痛）", "呕恶欲吐", "肠鸣、大便不调"],
+    minorSymptoms: ["口苦或口淡", "纳呆食少", "心烦", "神疲乏力"],
+    tonguePulse: ["舌淡红、苔腻而微黄", "脉弦滑或弦细数"],
+    pathogenesis:
+      "脾胃升降失常，寒热之邪互结中焦，气机痞塞不通，故心下痞满、呕恶肠鸣并见。《伤寒论》云：「但满而不痛者，此为痞，柴胡不中与之，宜半夏泻心汤。」",
+    treatment: "辛开苦降，平调寒热，和胃消痞",
+    formulaKeys: ["banxia_xiexin"],
+    combineHint: "酌加半夏、黄连、干姜，辛开苦降、平调寒热（半夏泻心汤意）",
+    dietKeys: ["shanyao_zhou", "foshou_chenpi_zhou"],
+    wellness: {
+      acupoint: [
+        {
+          name: "中脘、足三里",
+          method: "按揉，每穴 5 分钟，每日 1~2 次",
+          rationale: "中脘为胃募、腑会，足三里为胃经合穴，二穴相配和胃降逆、复中焦升降之职。",
+        },
+        {
+          name: "内关",
+          method: "按揉，每穴 3~5 分钟",
+          rationale: "心包经络穴，通阴维脉，宽中和胃、降逆止呕，善治痞满呕恶。",
+        },
+      ],
+      exercise: ["饭后缓行，助脾胃升降", "八段锦「调理脾胃须单举」"],
+      daily: ["饮食温凉适度，忌冷热混杂、暴饮暴食", "情志平和，怒后勿进食"],
+    },
+    relations: [
+      {
+        target: "piqixu",
+        mechanism: "痞证久延、中气日伤，寒热错杂可渐转脾胃虚寒，治痞勿忘顾护中气",
       },
     ],
   },

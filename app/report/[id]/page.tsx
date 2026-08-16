@@ -50,12 +50,20 @@ export default async function ReportDetailPage({ params }: { params: { id: strin
 
       <ReportSections data={result} analysis={report.summary} />
 
-      <a
-        href="/report"
-        className="inline-block rounded-lg border border-rice-dark px-5 py-2 text-sm text-ink-light hover:bg-rice"
-      >
-        ← 返回报告列表
-      </a>
+      <div className="flex gap-3">
+        <a
+          href="/report"
+          className="inline-block rounded-lg border border-rice-dark px-5 py-2 text-sm text-ink-light hover:bg-rice"
+        >
+          ← 返回报告列表
+        </a>
+        <a
+          href={`/followup?reportId=${report.id}`}
+          className="inline-block rounded-lg border border-cinnabar px-5 py-2 text-sm text-cinnabar hover:bg-cinnabar/5"
+        >
+          复诊复评 →
+        </a>
+      </div>
     </div>
   );
 }

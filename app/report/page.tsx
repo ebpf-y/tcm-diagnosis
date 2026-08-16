@@ -43,7 +43,8 @@ export default function ReportPage() {
     setLoading(true);
     setError("");
     try {
-      // 汇总各渠道命中的体征（证候辨证输入）
+      // 汇总各渠道命中的体征（证候辨证输入）；同时按渠道带来源提交，
+      // 服务端据此做四诊合参（互证加成 + 覆盖率感知归一 + 冲突检测）
       const signKeys = Array.from(new Set(channels.flatMap((c) => c.signKeys ?? [])));
       const demographics = channels.find((c) => c.channel === "intake")?.demographics;
       const res = await fetch("/api/report", {
@@ -54,6 +55,8 @@ export default function ReportPage() {
             channel: c.channel,
             scores: c.scores,
             weight: c.weight,
+            signKeys: c.signKeys ?? [],
+            pulseMode: c.pulseMode,
           })),
           channelNotes: Object.fromEntries(channels.map((c) => [c.channel, c.note])),
           signKeys,
@@ -134,10 +137,10 @@ export default function ReportPage() {
             ) : (
               <ul className="divide-y divide-rice-dark">
                 {history.map((h) => (
-                  <li key={h.id}>
+                  <li key={h.id} className="flex items-center justify-between gap-2 py-3 text-sm">
                     <a
                       href={`/report/${h.id}`}
-                      className="flex items-center justify-between py-3 text-sm hover:text-cinnabar"
+                      className="flex min-w-0 flex-1 items-center justify-between hover:text-cinnabar"
                     >
                       <span>
                         <span className="mr-2 font-medium">{h.primaryName}</span>
@@ -153,6 +156,12 @@ export default function ReportPage() {
                       <span className="text-xs text-ink-light">
                         {new Date(h.createdAt).toLocaleString("zh-CN")}
                       </span>
+                    </a>
+                    <a
+                      href={`/followup?reportId=${h.id}`}
+                      className="shrink-0 rounded-full border border-rice-dark px-2 py-0.5 text-xs text-ink-light hover:border-cinnabar hover:text-cinnabar"
+                    >
+                      复诊
                     </a>
                   </li>
                 ))}

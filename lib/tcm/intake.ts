@@ -7,8 +7,22 @@
  * 由引擎 intakeToSigns 组装为辨证输入。
  */
 
+/** 三部九候矩阵的一条记录（专家模式） */
+export interface PositionPulse {
+  side: "左" | "右";
+  position: "寸" | "关" | "尺";
+  depth: "浮" | "中" | "沉";
+  /** 该部候得的脉象（EXPERT_PULSE_OPTIONS 的 key，即 signs.ts 的脉象体征 key） */
+  qualities: string[];
+}
+
 /** 脉诊自测结构化数据 */
 export interface PulseForm {
+  /**
+   * 采集模式：amateur（业余向导，默认）/ expert（专业录入）。
+   * 缺省视为业余（兼容旧数据）。
+   */
+  mode?: "amateur" | "expert";
   /** 脉率（次/分），未测为 null */
   rate: number | null;
   /** 搏动力度 */
@@ -19,6 +33,18 @@ export interface PulseForm {
   width: "细如线" | "宽大" | "紧绷如弦" | "";
   /** 节律 */
   rhythm: "整齐" | "时有停跳" | "";
+  /** —— 业余模式质量控制 —— */
+  /** 实际测量秒数（计时器记录；<30 秒则脉率不可信，不产体征） */
+  measuredSeconds?: number | null;
+  /** 复测脉率（次/分；与首次差异 >10 提示重测，不产迟/数体征） */
+  retestRate?: number | null;
+  /** 脉形判断把握：不确定时脉形项不产体征（只保留脉率/节律） */
+  confidence?: "确定" | "不确定" | "";
+  /** —— 专家模式 —— */
+  /** 总体脉象（EXPERT_PULSE_OPTIONS 的 key 列表） */
+  pulse28?: string[];
+  /** 三部九候（左右×寸关尺×浮中沉，选填） */
+  positions?: PositionPulse[];
   /** —— 以下为进阶自测（可选，误差较大仅供参考） —— */
   /** 哪只手搏动更有力（双手对比） */
   strongerHand?: "左手" | "右手" | "双手相近" | "";
@@ -67,6 +93,10 @@ export interface IntakeForm {
   history: string[];
   /** 长期服药（自由文本，逗号分隔） */
   medications?: string;
+  /** 生活方式 key 列表（LIFESTYLE_OPTIONS；湿邪/阴虚等辨证的生活史依据） */
+  lifestyle?: string[];
+  /** 近期体检异常 key 列表（CHECKUP_OPTIONS；用于健康提示，不参与辨证评分） */
+  checkup?: string[];
   /** 女性专问，跳过或男性为 null */
   female: FemaleForm | null;
   /** 男性专问，跳过或女性为 null */
@@ -121,6 +151,7 @@ export const CHIEF_COMPLAINT_OPTIONS: IntakeOption[] = [
   { key: "heat", label: "五心烦热", signs: ["sym_heat"] },
   { key: "insomnia", label: "失眠多梦", signs: ["sym_insomnia"] },
   { key: "bloating", label: "脘腹胀满", signs: ["sym_bloating"] },
+  { key: "stuffiness", label: "胃脘痞满、呕恶", signs: ["sym_stuffiness", "sym_nausea"] },
   { key: "appetite", label: "食欲不振", signs: ["sym_appetite"] },
   { key: "headache", label: "头痛", signs: ["sym_headache"] },
   { key: "dizzy", label: "头晕目眩", signs: ["sym_dizzy"] },
@@ -185,6 +216,29 @@ export const HISTORY_OPTIONS = [
   { key: "none", label: "无慢性病史" },
 ];
 
+/**
+ * 生活方式（多选）——湿邪/阴虚等证的生活史依据。
+ * key 与 signs.ts 中对应 life_* 体征 key 一致，由引擎直接映射。
+ */
+export const LIFESTYLE_OPTIONS = [
+  { key: "life_cold_drink", label: "常食冷饮、生冷瓜果" },
+  { key: "life_late_sleep", label: "长期熬夜（23 点后入睡）" },
+  { key: "life_sedentary", label: "久坐少动" },
+  { key: "life_damp_env", label: "居处或工作环境潮湿" },
+  { key: "life_greasy", label: "嗜食肥甘厚味、甜腻" },
+];
+
+/**
+ * 近期体检异常（多选）——不参与辨证评分，用于报告健康提示
+ * （「体病相关」：体质/证候与现代医学指标的关联提示）。
+ */
+export const CHECKUP_OPTIONS = [
+  { key: "blood_lipid", label: "血脂异常" },
+  { key: "blood_sugar", label: "血糖偏高" },
+  { key: "uric_acid", label: "尿酸偏高" },
+  { key: "overweight", label: "体重超标（BMI ≥ 24）" },
+];
+
 /** 脉象自评选项 */
 export const PULSE_OPTIONS = {
   strength: ["有力", "无力", "适中"],
@@ -192,6 +246,40 @@ export const PULSE_OPTIONS = {
   width: ["细如线", "宽大", "紧绷如弦"],
   rhythm: ["整齐", "时有停跳"],
 } as const;
+
+/**
+ * 专家模式脉象选项（28 脉齐备：结代合为一项，另附疾脉；可扩展）。
+ * key 即 signs.ts 的脉象体征 key；专家模式录入直接产体征。
+ */
+export const EXPERT_PULSE_OPTIONS = [
+  { key: "pulse_fu", label: "浮", desc: "轻取即得，重按稍减" },
+  { key: "pulse_chen", label: "沉", desc: "轻取不应，重按始得" },
+  { key: "pulse_chi", label: "迟", desc: "一息不足四至（<60 次/分）" },
+  { key: "pulse_shuo", label: "数", desc: "一息五至以上（>90 次/分）" },
+  { key: "pulse_hua", label: "滑", desc: "往来流利，如珠走盘" },
+  { key: "pulse_se", label: "涩", desc: "往来艰涩，如轻刀刮竹" },
+  { key: "pulse_xu", label: "虚", desc: "举按无力，三部皆虚" },
+  { key: "pulse_shi", label: "实", desc: "举按皆有力" },
+  { key: "pulse_chang", label: "长", desc: "首尾端直，超过本位" },
+  { key: "pulse_duan", label: "短", desc: "首尾俱短，不及本位" },
+  { key: "pulse_hong", label: "洪", desc: "来盛去衰，如波涛汹涌" },
+  { key: "pulse_wei", label: "微", desc: "极细极软，似有似无" },
+  { key: "pulse_jin", label: "紧", desc: "绷急有力，如转绳索" },
+  { key: "pulse_huan", label: "缓", desc: "一息四至，怠缓不整" },
+  { key: "pulse_kou", label: "芤", desc: "浮大中空，如按葱管" },
+  { key: "pulse_xian", label: "弦", desc: "端直以长，如按琴弦" },
+  { key: "pulse_ge", label: "革", desc: "浮而搏指，中空外坚如按鼓皮" },
+  { key: "pulse_lao", label: "牢", desc: "沉实大弦长，按之坚牢不移" },
+  { key: "pulse_ru", label: "濡", desc: "浮细而软" },
+  { key: "pulse_ruo", label: "弱", desc: "沉细无力而软" },
+  { key: "pulse_san", label: "散", desc: "浮散无根，至数不齐——若伴气短汗出面白，属危重之象，应立即就医" },
+  { key: "pulse_xi", label: "细", desc: "脉细如线，应指明显" },
+  { key: "pulse_fuz", label: "伏", desc: "重按推筋着骨始得" },
+  { key: "pulse_dong", label: "动", desc: "滑数短促如豆，动摇不定" },
+  { key: "pulse_cu", label: "促", desc: "数而时一止，止无定数" },
+  { key: "pulse_jiedai", label: "结代", desc: "缓而时止，止有定数或良久方来" },
+  { key: "pulse_ji", label: "疾", desc: "一息七至以上（>120 次/分）" },
+] as const;
 
 /** 闻诊自评选项 */
 export const LISTENING_OPTIONS = {

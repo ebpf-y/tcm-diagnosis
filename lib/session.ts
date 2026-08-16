@@ -16,8 +16,21 @@ export interface ChannelResult {
   note: string;
   /** 该渠道命中的体征 key（证候辨证的输入） */
   signKeys?: string[];
-  /** 人口学信息（intake 渠道填写） */
-  demographics?: { gender: string; ageGroup: string };
+  /** 人口学与健康背景信息（intake 渠道填写；用于禁忌交叉校验与调理建议） */
+  demographics?: {
+    gender: string;
+    ageGroup: string;
+    /** 慢性病史 key（intake.ts HISTORY_OPTIONS） */
+    history?: string[];
+    /** 长期服药自由文本 */
+    medications?: string;
+    /** 病程 */
+    course?: string;
+    /** 近期体检异常 key（intake.ts CHECKUP_OPTIONS） */
+    checkup?: string[];
+  };
+  /** 脉诊采集模式（intake 渠道；expert 时脉象体征不参与降权） */
+  pulseMode?: "amateur" | "expert";
 }
 
 const STORAGE_KEY = "tcm.channels.v1";

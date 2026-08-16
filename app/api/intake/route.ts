@@ -32,7 +32,9 @@ export async function POST(req: Request) {
     const signKeys = intakeToSigns(intake);
     const scores = scoreSigns(signKeys);
     const top = topSignConstitutions(scores);
-    const patterns = scorePatterns(signKeys).slice(0, 3);
+    const patterns = scorePatterns(signKeys, {
+      availableCategories: ["symptom", "pulse", "listening"],
+    }).slice(0, 3);
     const note = intakeSummary(intake) || "已完成主诉与四诊信息采集";
 
     return NextResponse.json({ signKeys, scores, top, patterns, note, redFlags });

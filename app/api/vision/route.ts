@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { analyzeImage, type VisionMode } from "@/lib/llm/client";
-import { matchSignsFromText, scoreSigns, topSignConstitutions, scorePatterns } from "@/lib/engine";
+import {
+  matchSignsFromText,
+  scoreSigns,
+  topSignConstitutions,
+  scorePatterns,
+  visionFindingsToSigns,
+} from "@/lib/engine";
 
 export const runtime = "nodejs";
 
@@ -34,13 +40,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "图片过大，请压缩后重试（建议 2MB 以内）" }, { status: 400 });
     }
 
-    const description = await analyzeImage(body.image, body.mimeType, body.mode);
-    const signKeys = matchSignsFromText(description, body.mode === "tongue" ? "tongue" : "face");
+    const raw = await analyzeImage(body.image, body.mimeType, body.mode);
+    // 结构化 JSON 优先：枚举字段确定性映射为体征；
+    // 解析失败（模型未按协议输出）回退为自由文本关键词匹配
+    let description = raw;
+    let signKeys: string[];
+    /** 图像质量门控：不合格照片不产体征（防止低质量图像参与辨证与互证） */
+    let quality: "合格" | "不合格" | null = null;
+    let qualityIssue = "";
+    try {
+      const json = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as Record<
+        string,
+        unknown
+      >;
+      if (typeof json.description !== "string") throw new Error("缺少 description 字段");
+      description = json.description;
+      signKeys = visionFindingsToSigns(body.mode, json);
+      if (json.quality === "不合格") {
+        quality = "不合格";
+        qualityIssue = typeof json.qualityIssue === "string" ? json.qualityIssue : "";
+        signKeys = [];
+      } else if (json.quality === "合格") {
+        quality = "合格";
+      }
+    } catch {
+      signKeys = matchSignsFromText(raw, body.mode === "tongue" ? "tongue" : "face");
+    }
     const scores = scoreSigns(signKeys);
     const top = topSignConstitutions(scores);
-    const patterns = scorePatterns(signKeys).slice(0, 3);
+    const patterns = scorePatterns(signKeys, {
+      availableCategories: [body.mode === "tongue" ? "tongue" : "face"],
+    }).slice(0, 3);
 
-    return NextResponse.json({ description, signKeys, scores, top, patterns });
+    return NextResponse.json({ description, signKeys, scores, top, patterns, quality, qualityIssue });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "图像分析失败" },

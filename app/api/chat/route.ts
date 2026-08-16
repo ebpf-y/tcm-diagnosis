@@ -75,6 +75,7 @@ async function handleExtract(messages: ChatMessage[]) {
     .join("\n");
 
   let summary = "";
+  let llmKeys: string[] = [];
   try {
     const raw = await chatComplete([
       { role: "system", content: EXTRACT_SYSTEM_PROMPT },
@@ -82,16 +83,24 @@ async function handleExtract(messages: ChatMessage[]) {
     ]);
     const json = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
     summary = typeof json.summary === "string" ? json.summary : "";
+    // LLM 提取的规范化术语关键词纳入体征匹配（与用户原文关键词匹配取并集），
+    // 解决口语表述（如"睡不着"）匹配不到规范体征词（"失眠"）的问题
+    if (Array.isArray(json.keywords)) {
+      llmKeys = matchSignsFromText(
+        json.keywords.filter((k: unknown) => typeof k === "string").join("\n"),
+        "symptom"
+      );
+    }
   } catch {
     // LLM 提取失败时退化为纯关键词匹配
   }
 
   // 关键词匹配作为确定性兜底（mock 模式下这是主要路径）；仅匹配来访者自述
-  const signKeys = matchSignsFromText(userText, "symptom");
+  const signKeys = Array.from(new Set([...matchSignsFromText(userText, "symptom"), ...llmKeys]));
   const scores = scoreSigns(signKeys);
   const top = topSignConstitutions(scores);
-  // 证候辨证（含命中明细）
-  const patterns = scorePatterns(signKeys).slice(0, 3);
+  // 证候辨证（含命中明细；对话渠道仅产出症状类体征，按覆盖率归一）
+  const patterns = scorePatterns(signKeys, { availableCategories: ["symptom"] }).slice(0, 3);
 
   if (!summary) {
     summary =
