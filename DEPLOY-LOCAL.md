@@ -13,6 +13,24 @@
 本地打成压缩包直接传给服务器。`deploy.sh` 检测到目录里没有 `.git` 时会自动跳过拉取步骤，
 其余流程（装依赖 → 建 .env → 同步数据库 → 构建 → pm2 启动）完全一样。
 
+## 0.1 最快路径：一键脚本
+
+项目已内置全套脚本，绝大多数情况下一条命令搞定（本地 Git Bash、项目根目录）：
+
+```bash
+bash deploy-local.sh <服务器公网IP>        # 打包 → 上传 → 备份 → 解压 → 部署 → 验证
+```
+
+想分步执行或排查问题时用子脚本：
+
+```bash
+bash scripts/pack.sh                       # 仅打包（产物在项目同级目录 tcm-latest.tar.gz）
+bash scripts/upload.sh <服务器公网IP>      # 仅上传（scp 失败自动转 rsync 续传）
+ssh root@<服务器公网IP> 'bash -s' < scripts/server-install.sh   # 仅服务器端安装
+```
+
+手工逐步操作的完整说明见下文（与脚本逻辑一致）。
+
 ## 1. 本地打包（Git Bash）
 
 打开 Git Bash：
@@ -20,8 +38,8 @@
 ```bash
 cd /d/Work/Data/Code/projects
 
-# 打包（排除依赖、构建产物、git 元数据和本地数据库）
-tar --exclude=node_modules --exclude=.next --exclude=.git --exclude='prisma/*.db' \
+# 打包（排除依赖、构建产物、git 元数据、本地数据库与 .env）
+tar --exclude=node_modules --exclude=.next --exclude=.git --exclude='prisma/*.db' --exclude='.env' \
     -czf tcm-latest.tar.gz tcm
 
 # 确认包大小（通常 1~5 MB）
@@ -36,6 +54,7 @@ ls -lh tcm-latest.tar.gz
 | `.next` | 本地构建产物与服务器环境不一致，服务器会重新构建 |
 | `.git` | 避免与服务器上的仓库状态混淆 |
 | `prisma/*.db` | **防止用本地演示数据覆盖服务器上的正式报告数据** |
+| `.env` | **防止本地密钥随包外传或覆盖服务器上的 .env**（服务器 .env 由 deploy.sh 从 .env.example 创建/保留） |
 
 ## 2. 上传到服务器
 
