@@ -54,6 +54,9 @@ bash deploy.sh
 
 `deploy.sh` 自动完成：安装依赖（含 Prisma 引擎国内镜像）→ 创建 `.env` → 初始化 SQLite → 构建 → pm2 启动。
 
+> 若 `git clone` 因国内机房访问 GitHub 不稳定而失败，改用本地上传方案：
+> 见 [DEPLOY-LOCAL.md](DEPLOY-LOCAL.md)。
+
 ## 4. 配置 LLM Key（可选）
 
 不配置也能运行（演示模式，舌面诊/对话为内置模拟数据）。接入真实模型：
@@ -175,13 +178,4 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 - **构建时内存不足被杀**：见附录加 swap，或本地 `npm run build` 后将 `.next` 目录 scp 上传（不推荐，优先加内存）
 - **访问 502**：先 `curl http://127.0.0.1:3000` 确认应用在跑，再 `pm2 logs tcm` 看日志
 - **图片上传 413**：检查 Nginx 配置中 `client_max_body_size 10m` 是否存在
-- **`git pull` 连不上 GitHub**（国内机房常见，`Failure when receiving data from the peer`）：`deploy.sh` 已内置 3 次重试且失败后用现有代码继续部署。仍要更新代码时，从本地打包上传（绕过服务器访问 GitHub）：
-
-  ```bash
-  # 本地 Git Bash 执行（Windows 路径示例）
-  cd /d/Work/Data/Code/projects
-  tar --exclude=node_modules --exclude=.next --exclude=.git --exclude='prisma/*.db' -czf tcm-latest.tar.gz tcm
-  scp tcm-latest.tar.gz root@<服务器IP>:/root/
-  # 服务器上执行
-  cd ~/tcm-diagnosis && tar -xzf ~/tcm-latest.tar.gz --strip-components=1 && bash deploy.sh
-  ```
+- **`git pull` 连不上 GitHub**（国内机房常见，`Failure when receiving data from the peer`）：`deploy.sh` 已内置 3 次重试且失败后用现有代码继续部署。仍要更新代码时，改用**本地打包上传**方案，完整操作手册见 [DEPLOY-LOCAL.md](DEPLOY-LOCAL.md)（本地打包 → scp 上传 → 服务器解压 → 照常 `bash deploy.sh`）。
