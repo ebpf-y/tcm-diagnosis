@@ -163,3 +163,5 @@ tests/              规则引擎与复诊模块单元测试
 ## 服务器部署
 
 腾讯云（或其他 Linux 服务器）部署详见 [DEPLOY.md](DEPLOY.md)：clone 后执行 `bash deploy.sh` 即可一键部署/更新（脚本含 Prisma schema 同步，新增数据表自动创建）。
+
+产品特性、适用场景与完整操作手册见 [USAGE.md](USAGE.md)。
