@@ -56,6 +56,33 @@ export function clearChannelResults(): void {
   localStorage.removeItem(STORAGE_KEY);
 }
 
+// ------------------------------------------------------------------
+// 本设备生成的报告 ID（多人共用部署时的简易隔离：
+// 历史列表只展示本设备生成的报告，无账号体系下的最小隐私边界）
+// ------------------------------------------------------------------
+
+const MY_REPORTS_KEY = "tcm.myReports.v1";
+
+export function addMyReportId(id: string): void {
+  try {
+    const ids = getMyReportIds().filter((x) => x !== id);
+    ids.unshift(id);
+    localStorage.setItem(MY_REPORTS_KEY, JSON.stringify(ids.slice(0, 100)));
+  } catch {
+    // localStorage 不可用时忽略
+  }
+}
+
+export function getMyReportIds(): string[] {
+  try {
+    const raw = localStorage.getItem(MY_REPORTS_KEY);
+    const arr: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export const CHANNEL_LABELS: Record<string, string> = {
   intake: "主诉与四诊",
   questionnaire: "问卷问诊",

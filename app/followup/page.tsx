@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SIGNS } from "@/lib/tcm/signs";
 import { CHIEF_COMPLAINT_OPTIONS } from "@/lib/tcm/intake";
+import { getMyReportIds } from "@/lib/session";
 import { TREND_LABELS, type FollowUpTrend } from "@/lib/engine/followup";
 import type { PatternHit } from "@/lib/engine";
 import ScoreBars from "@/components/ScoreBars";
@@ -56,7 +57,10 @@ export default function FollowUpPage() {
     const id = new URLSearchParams(window.location.search).get("reportId");
     setReportId(id);
     if (!id) {
-      void fetch("/api/report")
+      // 报告选择列表只展示本设备生成的报告（多人共用部署时的隔离）
+      const ids = getMyReportIds();
+      if (ids.length === 0) return;
+      void fetch(`/api/report?ids=${ids.join(",")}`)
         .then((r) => r.json())
         .then((d: HistoryItem[]) => setHistory(d))
         .catch(() => undefined);

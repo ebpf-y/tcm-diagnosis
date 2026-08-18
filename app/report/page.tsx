@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import {
   loadChannelResults,
   clearChannelResults,
+  addMyReportId,
+  getMyReportIds,
   CHANNEL_LABELS,
   type ChannelResult,
 } from "@/lib/session";
@@ -33,7 +35,10 @@ export default function ReportPage() {
 
   useEffect(() => {
     setChannels(loadChannelResults());
-    void fetch("/api/report")
+    // 历史列表只加载本设备生成的报告（多人共用部署时的隔离）
+    const ids = getMyReportIds();
+    if (ids.length === 0) return;
+    void fetch(`/api/report?ids=${ids.join(",")}`)
       .then((r) => r.json())
       .then((d: HistoryItem[]) => setHistory(d))
       .catch(() => undefined);
@@ -66,6 +71,7 @@ export default function ReportPage() {
       });
       const data = (await res.json()) as ReportResult;
       if (!res.ok) throw new Error(data.error ?? "报告生成失败");
+      addMyReportId(data.id);
       setReport(data);
       clearChannelResults();
       setChannels([]);
@@ -131,9 +137,11 @@ export default function ReportPage() {
           </section>
 
           <section className="rounded-xl border border-rice-dark bg-white p-6">
-            <h2 className="mb-3 font-semibold">历史报告</h2>
+            <h2 className="mb-3 font-semibold">历史报告（本设备）</h2>
             {history.length === 0 ? (
-              <p className="text-sm text-ink-light">暂无历史报告。</p>
+              <p className="text-sm text-ink-light">
+                本设备暂无历史报告。生成的报告只记录在本设备的浏览器中，其他人看不到。
+              </p>
             ) : (
               <ul className="divide-y divide-rice-dark">
                 {history.map((h) => (

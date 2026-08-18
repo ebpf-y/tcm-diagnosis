@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 
 /** 存储的报告结构（新版含 patterns/plan，旧版无——兼容渲染由组件处理） */
 interface StoredResult {
-  combined: { id: ConstitutionId; name: string; score: number }[];
-  primary: { id: ConstitutionId; name: string };
+  combined: { id: ConstitutionId; name: string; score: number }[] | null;
+  primary: { id: ConstitutionId; name: string } | null;
   secondary: { id: ConstitutionId; name: string; score: number }[];
   isBalanced?: boolean;
   channelNotes: Record<string, string>;
@@ -37,7 +37,8 @@ export default async function ReportDetailPage({ params }: { params: { id: strin
     <div className="space-y-6">
       <div>
         <h1 className="mb-1 text-2xl font-bold">
-          历史报告：<span className="text-cinnabar">{result.primary.name}</span>
+          历史报告：
+          <span className="text-cinnabar">{result.primary?.name ?? "体质未判定（未完成问卷）"}</span>
           {result.patterns?.primary && (
             <span className="ml-2 text-lg text-ink">／{result.patterns.primary.name}</span>
           )}

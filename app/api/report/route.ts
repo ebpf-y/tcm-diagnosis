@@ -250,9 +250,18 @@ export async function POST(req: Request) {
   }
 }
 
-/** GET /api/report —— 历史报告列表（最新在前） */
-export async function GET() {
+/** GET /api/report —— 本设备报告列表（按 ids 过滤，最新在前） */
+export async function GET(req: Request) {
+  // 多人共用部署时的简易隔离：只返回调用方持有的报告 ID，
+  // 无 ids 时不返回任何列表（避免全库报告对所有访客可见）
+  const { searchParams } = new URL(req.url);
+  const ids = (searchParams.get("ids") ?? "")
+    .split(",")
+    .filter((s) => s.length > 0)
+    .slice(0, 100);
+  if (ids.length === 0) return NextResponse.json([]);
   const reports = await prisma.report.findMany({
+    where: { id: { in: ids } },
     orderBy: { createdAt: "desc" },
     take: 50,
   });
