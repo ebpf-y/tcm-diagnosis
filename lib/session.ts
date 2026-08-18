@@ -57,30 +57,54 @@ export function clearChannelResults(): void {
 }
 
 // ------------------------------------------------------------------
-// 本设备生成的报告 ID（多人共用部署时的简易隔离：
-// 历史列表只展示本设备生成的报告，无账号体系下的最小隐私边界）
+// 本设备生成的报告（多人共用部署时的简易隔离：
+// 历史列表只展示本设备生成的报告；访问令牌是详情页的持有证明）
 // ------------------------------------------------------------------
 
 const MY_REPORTS_KEY = "tcm.myReports.v1";
 
-export function addMyReportId(id: string): void {
+/** 本设备持有的报告引用（旧数据可能只有 id 没有 token） */
+export interface MyReportRef {
+  id: string;
+  token?: string;
+}
+
+export function addMyReport(ref: MyReportRef): void {
   try {
-    const ids = getMyReportIds().filter((x) => x !== id);
-    ids.unshift(id);
-    localStorage.setItem(MY_REPORTS_KEY, JSON.stringify(ids.slice(0, 100)));
+    const list = getMyReports().filter((r) => r.id !== ref.id);
+    list.unshift(ref);
+    localStorage.setItem(MY_REPORTS_KEY, JSON.stringify(list.slice(0, 100)));
   } catch {
     // localStorage 不可用时忽略
   }
 }
 
-export function getMyReportIds(): string[] {
+export function getMyReports(): MyReportRef[] {
   try {
     const raw = localStorage.getItem(MY_REPORTS_KEY);
     const arr: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : [];
+    if (!Array.isArray(arr)) return [];
+    // 兼容旧格式（纯 id 字符串数组）
+    return arr
+      .map((x): MyReportRef | null =>
+        typeof x === "string"
+          ? { id: x }
+          : x && typeof x === "object" && typeof (x as MyReportRef).id === "string"
+            ? { id: (x as MyReportRef).id, token: (x as MyReportRef).token }
+            : null
+      )
+      .filter((r): r is MyReportRef => r !== null);
   } catch {
     return [];
   }
+}
+
+export function getMyReportIds(): string[] {
+  return getMyReports().map((r) => r.id);
+}
+
+export function getMyReportToken(id: string): string | undefined {
+  return getMyReports().find((r) => r.id === id)?.token;
 }
 
 export const CHANNEL_LABELS: Record<string, string> = {

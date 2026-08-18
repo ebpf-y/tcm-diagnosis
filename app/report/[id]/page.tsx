@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { canAccessReport } from "@/lib/report-access";
 import type { ConstitutionId } from "@/lib/tcm/constitutions";
 import type { PatternHit, TreatmentPlan } from "@/lib/engine";
 import ReportSections from "@/components/ReportSections";
@@ -26,9 +27,17 @@ const CHANNEL_LABELS: Record<string, string> = {
   face: "面诊",
 };
 
-export default async function ReportDetailPage({ params }: { params: { id: string } }) {
+export default async function ReportDetailPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams: { token?: string };
+}) {
   const report = await prisma.report.findUnique({ where: { id: params.id } });
   if (!report) notFound();
+  // 访问令牌校验（旧报告无令牌字段时兼容放行）；不匹配统一 404，避免探测
+  if (!canAccessReport(report, searchParams.token ?? null)) notFound();
 
   const result = JSON.parse(report.resultJson) as StoredResult;
   const sources = JSON.parse(report.sources) as string[];
@@ -59,7 +68,7 @@ export default async function ReportDetailPage({ params }: { params: { id: strin
           ← 返回报告列表
         </a>
         <a
-          href={`/followup?reportId=${report.id}`}
+          href={`/followup?reportId=${report.id}${searchParams.token ? `&token=${encodeURIComponent(searchParams.token)}` : ""}`}
           className="inline-block rounded-lg border border-cinnabar px-5 py-2 text-sm text-cinnabar hover:bg-cinnabar/5"
         >
           复诊复评 →

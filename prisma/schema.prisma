@@ -20,6 +20,8 @@ model Report {
   summary      String
   // 各渠道输入的摘要（JSON 字符串，便于回看）
   inputSummary String   @default("{}")
+  // 访问令牌：报告详情的最小持有证明（旧报告为 null 时兼容放行）
+  accessToken  String?
 }
 
 // 复诊复评记录：针对某份报告的症状复评与证候对比结果
@@ -32,4 +34,14 @@ model FollowUp {
   signKeys   String
   // 初诊 vs 复诊证候对比结果（JSON 字符串）
   resultJson String
+}
+
+// 使用日志：各 API 的关键事件（不含敏感内容原文，仅计数与分类信息）
+model UsageLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  // 事件名：report.create / followup.create / vision.analyze / chat.extract / intake.submit
+  event     String
+  // 事件元信息（JSON 字符串；只存渠道、数量、质量标记等非敏感内容）
+  meta      String   @default("{}")
 }

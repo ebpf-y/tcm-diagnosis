@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import {
   loadChannelResults,
   clearChannelResults,
-  addMyReportId,
+  addMyReport,
   getMyReportIds,
+  getMyReportToken,
   CHANNEL_LABELS,
   type ChannelResult,
 } from "@/lib/session";
@@ -14,6 +15,7 @@ import ReportSections, { type ReportViewData } from "@/components/ReportSections
 
 interface ReportResult extends ReportViewData {
   id: string;
+  accessToken?: string;
   analysis: string;
   error?: string;
 }
@@ -71,7 +73,7 @@ export default function ReportPage() {
       });
       const data = (await res.json()) as ReportResult;
       if (!res.ok) throw new Error(data.error ?? "报告生成失败");
-      addMyReportId(data.id);
+      addMyReport({ id: data.id, token: data.accessToken });
       setReport(data);
       clearChannelResults();
       setChannels([]);
@@ -144,10 +146,14 @@ export default function ReportPage() {
               </p>
             ) : (
               <ul className="divide-y divide-rice-dark">
-                {history.map((h) => (
+                {history.map((h) => {
+                  const token = getMyReportToken(h.id);
+                  const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : "";
+                  const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
+                  return (
                   <li key={h.id} className="flex items-center justify-between gap-2 py-3 text-sm">
                     <a
-                      href={`/report/${h.id}`}
+                      href={`/report/${h.id}${tokenQuery}`}
                       className="flex min-w-0 flex-1 items-center justify-between hover:text-cinnabar"
                     >
                       <span>
@@ -166,13 +172,14 @@ export default function ReportPage() {
                       </span>
                     </a>
                     <a
-                      href={`/followup?reportId=${h.id}`}
+                      href={`/followup?reportId=${h.id}${tokenParam}`}
                       className="shrink-0 rounded-full border border-rice-dark px-2 py-0.5 text-xs text-ink-light hover:border-cinnabar hover:text-cinnabar"
                     >
                       复诊
                     </a>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </section>

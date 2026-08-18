@@ -7,6 +7,7 @@ import {
   topSignConstitutions,
 } from "@/lib/engine";
 import { CHIEF_COMPLAINT_OPTIONS, type IntakeForm } from "@/lib/tcm/intake";
+import { logUsage } from "@/lib/usage-log";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,11 @@ export async function POST(req: Request) {
       availableCategories: ["symptom", "pulse", "listening"],
     }).slice(0, 3);
     const note = intakeSummary(intake) || "已完成主诉与四诊信息采集";
+    void logUsage("intake.submit", {
+      signCount: signKeys.length,
+      redFlagCount: redFlags.length,
+      pulseMode: intake.pulse?.mode ?? "amateur",
+    });
 
     return NextResponse.json({ signKeys, scores, top, patterns, note, redFlags });
   } catch (err) {

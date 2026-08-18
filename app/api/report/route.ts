@@ -16,6 +16,8 @@ import type { Sign } from "@/lib/tcm/signs";
 import { CONSTITUTIONS, type ConstitutionId } from "@/lib/tcm/constitutions";
 import { chatComplete } from "@/lib/llm/client";
 import { buildAnalysisPrompt } from "@/lib/prompts";
+import { generateAccessToken } from "@/lib/report-access";
+import { logUsage } from "@/lib/usage-log";
 
 export const runtime = "nodejs";
 
@@ -232,16 +234,24 @@ export async function POST(req: Request) {
       demographics: body.demographics ?? null,
     });
 
+    const accessToken = generateAccessToken();
     const report = await prisma.report.create({
       data: {
         sources: JSON.stringify(channels.map((c) => c.channel)),
         resultJson,
         summary: analysis,
         inputSummary: JSON.stringify(body.inputSummary ?? {}),
+        accessToken,
       },
     });
+    void logUsage("report.create", {
+      channels: channels.map((c) => c.channel),
+      pattern: primaryPattern?.id ?? null,
+      constitution: primaryConst?.id ?? null,
+      formulaWithheld,
+    });
 
-    return NextResponse.json({ id: report.id, ...JSON.parse(resultJson), analysis });
+    return NextResponse.json({ id: report.id, accessToken, ...JSON.parse(resultJson), analysis });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "报告生成失败" },

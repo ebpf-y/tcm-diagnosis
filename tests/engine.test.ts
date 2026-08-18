@@ -1146,3 +1146,33 @@ describe("28 脉齐备性", () => {
     expect(keys).toEqual(expect.arrayContaining(["pulse_guan_weak", "pulse_chi_weak", "pulse_right_weak"]));
   });
 });
+
+// ------------------------------------------------------------------
+// 报告访问令牌（report-access.ts）
+// ------------------------------------------------------------------
+
+import { canAccessReport, generateAccessToken } from "@/lib/report-access";
+
+describe("报告访问令牌", () => {
+  it("无令牌的旧报告兼容放行", () => {
+    expect(canAccessReport({ accessToken: null }, null)).toBe(true);
+    expect(canAccessReport({}, undefined)).toBe(true);
+    expect(canAccessReport({ accessToken: null }, "anything")).toBe(true);
+  });
+
+  it("有令牌的报告：令牌一致放行，缺失/错误拒绝", () => {
+    const report = { accessToken: "secret-token" };
+    expect(canAccessReport(report, "secret-token")).toBe(true);
+    expect(canAccessReport(report, "wrong")).toBe(false);
+    expect(canAccessReport(report, null)).toBe(false);
+    expect(canAccessReport(report, "")).toBe(false);
+  });
+
+  it("令牌生成：URL 安全且随机", () => {
+    const a = generateAccessToken();
+    const b = generateAccessToken();
+    expect(a).not.toBe(b);
+    expect(/^[A-Za-z0-9_-]+$/.test(a)).toBe(true);
+    expect(a.length).toBeGreaterThanOrEqual(32);
+  });
+});

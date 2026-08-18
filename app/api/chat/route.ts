@@ -1,6 +1,7 @@
 import { chatComplete, type ChatMessage } from "@/lib/llm/client";
 import { matchSignsFromText, scoreSigns, topSignConstitutions, scorePatterns } from "@/lib/engine";
 import { CHAT_SYSTEM_PROMPT, EXTRACT_SYSTEM_PROMPT } from "@/lib/prompts";
+import { logUsage } from "@/lib/usage-log";
 
 export const runtime = "nodejs";
 
@@ -108,5 +109,6 @@ async function handleExtract(messages: ChatMessage[]) {
         ? `对话中识别到 ${signKeys.length} 项症状线索`
         : "对话中未识别到明显症状线索";
   }
+  void logUsage("chat.extract", { signCount: signKeys.length, llmExtracted: llmKeys.length > 0 });
   return Response.json({ summary, signKeys, scores, top, patterns });
 }

@@ -162,6 +162,18 @@ cp prisma/dev.db ~/backup/dev-$(date +%Y%m%d).db
 
 建议用 crontab 加一条每日自动备份。
 
+## 9. 使用情况日志
+
+系统会把关键事件（生成报告、复诊复评、舌面诊分析、对话提取、主诉采集）写入
+`UsageLog` 表（只含计数与分类信息，不含主诉/症状/图像等敏感内容原文）。
+在服务器项目目录下查看：
+
+```bash
+node --env-file=.env scripts/usage-log.mjs
+```
+
+输出：事件总量、近 14 天每日分布、最近 30 条事件明细。
+
 ## 附录：1G 内存服务器构建前加 swap
 
 ```bash

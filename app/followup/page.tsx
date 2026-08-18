@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SIGNS } from "@/lib/tcm/signs";
 import { CHIEF_COMPLAINT_OPTIONS } from "@/lib/tcm/intake";
-import { getMyReportIds } from "@/lib/session";
+import { getMyReportIds, getMyReportToken } from "@/lib/session";
 import { TREND_LABELS, type FollowUpTrend } from "@/lib/engine/followup";
 import type { PatternHit } from "@/lib/engine";
 import ScoreBars from "@/components/ScoreBars";
@@ -53,9 +53,12 @@ export default function FollowUpPage() {
   const [error, setError] = useState("");
 
   // 用 window.location.search 解析 query，避开 useSearchParams 的 Suspense 构建限制
+  const [token, setToken] = useState<string | null>(null);
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("reportId");
+    const q = new URLSearchParams(window.location.search);
+    const id = q.get("reportId");
     setReportId(id);
+    setToken(q.get("token"));
     if (!id) {
       // 报告选择列表只展示本设备生成的报告（多人共用部署时的隔离）
       const ids = getMyReportIds();
@@ -69,7 +72,7 @@ export default function FollowUpPage() {
 
   useEffect(() => {
     if (!reportId) return;
-    void fetch(`/api/report/${reportId}`)
+    void fetch(`/api/report/${reportId}${token ? `?token=${encodeURIComponent(token)}` : ""}`)
       .then(async (r) => {
         const d = await r.json();
         if (!r.ok) throw new Error(d.error ?? "报告加载失败");
@@ -117,7 +120,7 @@ export default function FollowUpPage() {
       const res = await fetch("/api/followup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reportId, signKeys: Array.from(keys) }),
+        body: JSON.stringify({ reportId, signKeys: Array.from(keys), token: token ?? undefined }),
       });
       const data = (await res.json()) as FollowUpResult & { error?: string };
       if (!res.ok) throw new Error(data.error ?? "复诊复评失败");
@@ -163,10 +166,12 @@ export default function FollowUpPage() {
             </p>
           ) : (
             <ul className="divide-y divide-rice-dark">
-              {history.map((h) => (
+              {history.map((h) => {
+                const t = getMyReportToken(h.id);
+                return (
                 <li key={h.id}>
                   <a
-                    href={`/followup?reportId=${h.id}`}
+                    href={`/followup?reportId=${h.id}${t ? `&token=${encodeURIComponent(t)}` : ""}`}
                     className="flex items-center justify-between py-3 text-sm hover:text-cinnabar"
                   >
                     <span>
@@ -182,7 +187,8 @@ export default function FollowUpPage() {
                     </span>
                   </a>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </section>
@@ -223,7 +229,7 @@ export default function FollowUpPage() {
               重新生成综合报告
             </a>
             <a
-              href={`/report/${reportId}`}
+              href={`/report/${reportId}${token ? `?token=${encodeURIComponent(token)}` : ""}`}
               className="rounded-lg border border-rice-dark px-5 py-2 text-sm text-ink-light hover:bg-rice"
             >
               返回初诊报告

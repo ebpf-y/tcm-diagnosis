@@ -7,6 +7,7 @@ import {
   scorePatterns,
   visionFindingsToSigns,
 } from "@/lib/engine";
+import { logUsage } from "@/lib/usage-log";
 
 export const runtime = "nodejs";
 
@@ -71,6 +72,11 @@ export async function POST(req: Request) {
     const patterns = scorePatterns(signKeys, {
       availableCategories: [body.mode === "tongue" ? "tongue" : "face"],
     }).slice(0, 3);
+    void logUsage("vision.analyze", {
+      mode: body.mode,
+      quality: quality ?? "未知",
+      signCount: signKeys.length,
+    });
 
     return NextResponse.json({ description, signKeys, scores, top, patterns, quality, qualityIssue });
   } catch (err) {

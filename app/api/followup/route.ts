@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { scorePatterns, type PatternHit } from "@/lib/engine";
 import { judgeTrend, TREND_TEXTS, type FollowUpTrend } from "@/lib/engine/followup";
+import { canAccessReport } from "@/lib/report-access";
+import { logUsage } from "@/lib/usage-log";
 import type { Sign } from "@/lib/tcm/signs";
 
 export const runtime = "nodejs";
@@ -40,7 +42,7 @@ interface FollowUpResult {
  */
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as { reportId?: unknown; signKeys?: unknown };
+    const body = (await req.json()) as { reportId?: unknown; signKeys?: unknown; token?: unknown };
 
     if (typeof body.reportId !== "string" || body.reportId.length === 0) {
       return NextResponse.json({ error: "缺少 reportId" }, { status: 400 });
@@ -58,6 +60,13 @@ export async function POST(req: Request) {
 
     const report = await prisma.report.findUnique({ where: { id: body.reportId } });
     if (!report) {
+      return NextResponse.json({ error: "报告不存在" }, { status: 404 });
+    }
+    const token =
+      typeof body.token === "string"
+        ? body.token
+        : new URL(req.url).searchParams.get("token");
+    if (!canAccessReport(report, token)) {
       return NextResponse.json({ error: "报告不存在" }, { status: 404 });
     }
     const stored = JSON.parse(report.resultJson) as { patterns?: StoredPatterns | null };
@@ -103,6 +112,7 @@ export async function POST(req: Request) {
         resultJson: JSON.stringify(result),
       },
     });
+    void logUsage("followup.create", { trend, signCount: signKeys.length });
 
     return NextResponse.json({ id: followUp.id, ...result });
   } catch (err) {
@@ -113,14 +123,18 @@ export async function POST(req: Request) {
   }
 }
 
-/** GET /api/followup?reportId=xxx —— 该报告的复诊记录（最新在前） */
+/** GET /api/followup?reportId=xxx&token=xxx —— 该报告的复诊记录（最新在前） */
 export async function GET(req: Request) {
-  const reportId = new URL(req.url).searchParams.get("reportId");
+  const params = new URL(req.url).searchParams;
+  const reportId = params.get("reportId");
   if (!reportId) {
     return NextResponse.json({ error: "缺少 reportId" }, { status: 400 });
   }
   const report = await prisma.report.findUnique({ where: { id: reportId } });
   if (!report) {
+    return NextResponse.json({ error: "报告不存在" }, { status: 404 });
+  }
+  if (!canAccessReport(report, params.get("token"))) {
     return NextResponse.json({ error: "报告不存在" }, { status: 404 });
   }
   const followUps = await prisma.followUp.findMany({
