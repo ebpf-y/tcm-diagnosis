@@ -1,7 +1,7 @@
 /**
- * 证候库（18 个常见证候）
+ * 证候库（21 个常见证候）
  *
- * 覆盖八纲、脏腑、气血津液辨证的常见证候。主症/兼症/舌脉参照
+ * 覆盖八纲、脏腑、气血津液、六经辨证的常见证候。主症/兼症/舌脉参照
  * 《中医诊断学》《中医内科学》通行表述；病机附经典引文，
  * 引文均出自《黄帝内经》《伤寒论》《金匮要略》等原著原文。
  * 每个证候关联：治则、经典方剂（formulas.ts key）、食疗（diet-therapy.ts key）、
@@ -28,7 +28,10 @@ export type PatternId =
   | "weiyinxu" // 胃阴虚证
   | "xinshen_bujiao" // 心肾不交证
   | "qizhi_xueyu" // 气滞血瘀证
-  | "hanre_cuoza"; // 寒热错杂痞证
+  | "hanre_cuoza" // 寒热错杂痞证
+  | "shaoyang_shuli" // 少阳枢机不利证
+  | "fengshi_shubiao" // 风寒夹湿证（外感风寒、内伤湿滞）
+  | "shuishi_neiting"; // 水湿内停证（膀胱气化不利）
 
 /** 穴位保健条目 */
 export interface AcupointAdvice {
@@ -97,7 +100,7 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "脾主运化，为气血生化之源。脾气亏虚则运化失健，水谷不化，故纳呆便溏；气血生化乏源，故神疲乏力。《脾胃论》云：「脾胃之气既伤，而元气亦不能充，而诸病之所由生也。」",
     treatment: "健脾益气",
-    formulaKeys: ["sijunzi", "shenlingbaizhu"],
+    formulaKeys: ["sijunzi", "shenlingbaizhu", "buzhong_yiqi"],
     combineHint: "酌加党参、白术、茯苓，健脾益气（四君子汤意）",
     dietKeys: ["shanyao_zhou", "shenqi_yimi_zhou"],
     wellness: {
@@ -207,6 +210,10 @@ export const PATTERNS: Record<PatternId, Pattern> = {
         target: "shenyinxu",
         mechanism: "阴阳互根，阳损日久及阴，可致阴阳两虚",
         classic: "《景岳全书》「善补阳者，必于阴中求阳，则阳得阴助而生化无穷」",
+      },
+      {
+        target: "shuishi_neiting",
+        mechanism: "肾阳不足、膀胱气化无权，水液内停而见小便不利、水肿",
       },
     ],
   },
@@ -329,7 +336,7 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "肝主疏泄，调畅气机情志。情志不遂则肝失条达、气机郁滞，故胁胀太息、情志抑郁。《素问·举痛论》云：「百病生于气也。」",
     treatment: "疏肝解郁，理气畅中",
-    formulaKeys: ["chaihu_shugan", "sini", "xiaochaihu"],
+    formulaKeys: ["chaihu_shugan", "sini"],
     combineHint: "酌加柴胡、香附、白芍，疏肝解郁（柴胡疏肝散意）",
     dietKeys: ["meiguihua_cha", "foshou_chenpi_zhou"],
     wellness: {
@@ -490,7 +497,7 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "肺主气司呼吸，外合皮毛。肺气亏虚则呼吸功能减弱、卫表不固，故气短自汗、反复感冒。《素问·至真要大论》云：「诸气膹郁，皆属于肺。」",
     treatment: "补益肺气，固表止汗",
-    formulaKeys: ["yupingfeng", "buzhong_yiqi"],
+    formulaKeys: ["yupingfeng"],
     combineHint: "酌加黄芪、防风、白术，益气固表（玉屏风散意）",
     dietKeys: ["huangqi_dunji", "shenqi_yimi_zhou"],
     wellness: {
@@ -545,7 +552,12 @@ export const PATTERNS: Record<PatternId, Pattern> = {
       exercise: ["微汗为宜，切忌大汗淋漓", "病中宜静养，暂停剧烈运动"],
       daily: ["注意保暖避风", "热粥助汗，覆被取微汗"],
     },
-    relations: [],
+    relations: [
+      {
+        target: "fengshi_shubiao",
+        mechanism: "风寒表证夹湿，或素体湿盛而外受风寒，可成风寒夹湿之候（恶寒无汗、脘痞吐泻并见）",
+      },
+    ],
   },
   fengre_fanbiao: {
     id: "fengre_fanbiao",
@@ -588,7 +600,7 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "脾失健运，水湿内停，聚湿成痰，痰湿中阻则气机升降失常。《金匮要略》云：「病痰饮者，当以温药和之。」《丹溪心法》云：「百病多有兼痰者。」",
     treatment: "燥湿化痰，理气和中",
-    formulaKeys: ["erchen", "pingwei", "wuling"],
+    formulaKeys: ["erchen", "pingwei"],
     combineHint: "酌加半夏、陈皮、茯苓，燥湿化痰（二陈汤意）",
     dietKeys: ["yimi_donggua_tang", "shenqi_yimi_zhou"],
     wellness: {
@@ -624,7 +636,7 @@ export const PATTERNS: Record<PatternId, Pattern> = {
     pathogenesis:
       "湿热之邪蕴结中焦，脾胃升降失司，湿性黏滞、热性炎上，故痞闷口黏、便溏溲黄并见。薛生白《湿热条辨》云：「湿热证，始恶寒，后但热不寒，汗出胸痞，舌白，口渴不引饮。」",
     treatment: "清热利湿，醒脾和中",
-    formulaKeys: ["ganlu_xiaodu", "huoxiang_zhengqi"],
+    formulaKeys: ["ganlu_xiaodu"],
     combineHint: "酌加黄芩、滑石、茵陈，清热利湿",
     dietKeys: ["lvdou_yimi_tang", "yimi_donggua_tang"],
     wellness: {
@@ -787,6 +799,128 @@ export const PATTERNS: Record<PatternId, Pattern> = {
       {
         target: "piqixu",
         mechanism: "痞证久延、中气日伤，寒热错杂可渐转脾胃虚寒，治痞勿忘顾护中气",
+      },
+    ],
+  },
+  shaoyang_shuli: {
+    id: "shaoyang_shuli",
+    name: "少阳枢机不利证",
+    category: "六经卫气营血辨证",
+    chiefSymptoms: ["往来寒热（忽冷忽热）", "胸胁苦满", "心烦喜呕、口苦咽干"],
+    minorSymptoms: ["目眩", "默默不欲饮食", "情绪抑郁、善太息", "症状随情绪波动而增减"],
+    tonguePulse: ["舌淡红、苔薄白", "脉弦"],
+    pathogenesis:
+      "邪犯少阳，枢机不利，正邪分争于半表半里之间，故往来寒热；少阳经脉布于胸胁，经气郁滞则胸胁苦满；胆热犯胃则心烦喜呕、口苦咽干。《伤寒论》云：「伤寒五六日，中风，往来寒热，胸胁苦满，默默不欲饮食，心烦喜呕……小柴胡汤主之。」",
+    treatment: "和解少阳，疏利枢机",
+    formulaKeys: ["xiaochaihu"],
+    combineHint: "酌加柴胡、黄芩，和解少阳（小柴胡汤意）",
+    dietKeys: ["lianzi_baihe_zhou", "meiguihua_cha"],
+    wellness: {
+      acupoint: [
+        {
+          name: "太冲、期门",
+          method: "按揉，每穴 3~5 分钟，每日 1~2 次",
+          rationale: "太冲为肝经原穴，期门为肝之募穴，少阳与厥阴相表里，疏利枢机必先条达肝胆之气。",
+        },
+        {
+          name: "内关",
+          method: "按揉，每穴 3~5 分钟",
+          rationale: "心包经络穴，通阴维脉，宽中除烦、和胃降逆，善治心烦喜呕之候。",
+        },
+      ],
+      exercise: ["舒展性运动以宣畅气机：散步、八段锦", "忌情绪剧烈对抗性运动，勿过劳"],
+      daily: ["保持情志舒畅，移情易性", "饮食清淡有节，忌生冷黏腻碍胃之品"],
+    },
+    relations: [
+      {
+        target: "ganyu_qizhi",
+        mechanism: "少阳枢机不利与肝郁气滞同属气机郁滞之候，胆郁日久可循经及肝，转见肝郁之证",
+      },
+      {
+        target: "ganyu_pixu",
+        mechanism: "木郁克土，少阳郁滞横逆犯脾，可见纳呆腹胀之肝郁脾虚兼候",
+        classic: "《金匮要略》「见肝之病，知肝传脾，当先实脾」",
+      },
+    ],
+  },
+  fengshi_shubiao: {
+    id: "fengshi_shubiao",
+    name: "风寒夹湿证（外感风寒、内伤湿滞）",
+    category: "八纲辨证",
+    chiefSymptoms: ["恶寒发热、无汗", "头身困重、脘腹痞满", "呕吐泄泻"],
+    minorSymptoms: ["鼻塞流清涕", "口淡口中黏腻", "肠鸣", "遇阴冷潮湿加重"],
+    tonguePulse: ["舌淡红、苔白腻", "脉浮紧或濡缓"],
+    pathogenesis:
+      "风寒外束肌表，卫阳被遏，故恶寒发热无汗；湿浊内伤中焦，脾胃升降失司，故脘腹痞满、呕吐泄泻并见。《太平惠民和剂局方》藿香正气散主「伤寒头疼，憎寒壮热，上喘咳嗽，五劳七伤，八般风痰，五般膈气，心腹冷痛，反胃呕恶，气泻霍乱，脏腑虚鸣」。",
+    treatment: "解表散寒，化湿和中",
+    formulaKeys: ["huoxiang_zhengqi"],
+    combineHint: "酌加藿香、紫苏、白芷，解表化湿、理气和中（藿香正气散意）",
+    dietKeys: ["shengjiang_hongtang_shui", "shenqi_yimi_zhou"],
+    wellness: {
+      acupoint: [
+        {
+          name: "大椎、风池",
+          method: "按揉或艾灸，每穴 5 分钟",
+          rationale: "大椎为诸阳之会，风池疏风解表，二穴相配散寒解表、升阳醒神。",
+        },
+        {
+          name: "中脘、足三里",
+          method: "按揉，每穴 5 分钟",
+          rationale: "中脘为胃募、腑会，足三里为胃经合穴，二穴相配化湿和中、复脾胃升降之职。",
+        },
+      ],
+      exercise: ["病中静养，微汗为度，切忌大汗与剧烈运动", "好转后缓步行走助气机流通"],
+      daily: ["居处温暖干燥，避风寒潮湿", "饮食温软清淡，忌生冷油腻、甜黏助湿之品"],
+    },
+    relations: [
+      {
+        target: "fenghan_shubiao",
+        mechanism: "湿邪渐化、表寒独存，可转为单纯风寒束表；或素体无湿而外寒直中",
+      },
+      {
+        target: "tanshi_zhongzu",
+        mechanism: "外感解后湿邪留恋中焦，或素体湿盛者，可转入痰湿中阻之候",
+      },
+    ],
+  },
+  shuishi_neiting: {
+    id: "shuishi_neiting",
+    name: "水湿内停证（膀胱气化不利）",
+    category: "气血津液辨证",
+    chiefSymptoms: ["小便不利、排尿不畅", "水肿（眼睑颜面或肢体）", "渴欲饮水或水入即吐"],
+    minorSymptoms: ["头眩", "脐下动悸", "身体沉重", "大便溏薄"],
+    tonguePulse: ["舌淡胖、苔白滑", "脉浮或濡"],
+    pathogenesis:
+      "水湿内停，膀胱气化不利，故小便不利；水液泛溢肌肤则水肿；水气上逆则头眩、渴欲饮水。《伤寒论》云：「太阳病，发汗后……若脉浮，小便不利，微热消渴者，五苓散主之。」《素问·灵兰秘典论》云：「膀胱者，州都之官，津液藏焉，气化则能出矣。」",
+    treatment: "利水渗湿，温阳化气",
+    formulaKeys: ["wuling"],
+    combineHint: "酌加泽泻、茯苓、桂枝，利水渗湿、温阳化气（五苓散意）",
+    dietKeys: ["yimi_donggua_tang", "shenqi_yimi_zhou"],
+    wellness: {
+      acupoint: [
+        {
+          name: "阴陵泉、三阴交",
+          method: "按揉或艾灸，每穴 5~10 分钟",
+          rationale: "阴陵泉为脾经合穴、健脾利湿之要穴，三阴交调肝脾肾三阴、助运化水湿。",
+        },
+        {
+          name: "关元、气海",
+          method: "艾灸，每穴 10~15 分钟",
+          rationale: "关元、气海温阳益气，助膀胱气化而行水，标本兼顾。",
+        },
+      ],
+      exercise: ["和缓运动以微汗为度，助水湿从肌肤外泄", "忌久坐久卧，水湿忌静忌滞"],
+      daily: ["居处干燥，忌潮湿", "饮食少盐清淡，晚餐勿过咸过饮，以免水液潴留"],
+    },
+    relations: [
+      {
+        target: "shenyangxu",
+        mechanism: "水湿内停日久，阳气日耗，或肾阳素虚、气化无权而本病由生，可转肾阳虚水泛之候",
+      },
+      {
+        target: "tanshi_zhongzu",
+        mechanism: "水湿凝聚可成痰，与痰湿中阻相互兼夹转化",
+        classic: "《素问·至真要大论》「诸湿肿满，皆属于脾」",
       },
     ],
   },

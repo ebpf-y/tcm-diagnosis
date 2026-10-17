@@ -65,7 +65,17 @@ export interface FemaleForm {
   flow: "正常" | "量少色淡" | "量多" | "";
   pain: boolean; // 痛经、经血有块
   leukorrhea: boolean; // 带下异常
+  /**
+   * 孕哺状态（安全底线：孕期/哺乳期是方药禁忌的强制校验条件；
+   * 旧数据无此字段时按空串兼容）
+   */
+  pregnancy?: PregnancyStatus;
 }
+
+/** 孕哺状态选项 */
+export type PregnancyStatus = "无" | "备孕中" | "怀孕中" | "哺乳期" | "";
+
+export const PREGNANCY_OPTIONS: Exclude<PregnancyStatus, "">[] = ["无", "备孕中", "怀孕中", "哺乳期"];
 
 /** 男性专问（可整体跳过） */
 export interface MaleForm {
@@ -169,11 +179,22 @@ export const CHIEF_COMPLAINT_OPTIONS: IntakeOption[] = [
   { key: "night_sweat", label: "盗汗", signs: ["sym_night_sweat"] },
   { key: "throat", label: "咽喉肿痛", signs: ["sym_sore_throat"] },
   { key: "fever", label: "发热", signs: ["sym_fever"] },
+  { key: "alternating", label: "忽冷忽热（往来寒热）", signs: ["sym_alternating"] },
+  { key: "cold_fever_no_sweat", label: "怕冷发热而无汗", signs: ["sym_cold", "sym_no_sweat"] },
   // —— 急重症词条（不提供辨证，仅触发就医警示） ——
   { key: "chest_pain", label: "剧烈胸痛", red: true },
   { key: "high_fever", label: "高热不退", red: true },
   { key: "bleeding", label: "出血不止", red: true },
   { key: "consciousness", label: "意识异常", red: true },
+  { key: "severe_abdominal_pain", label: "剧烈腹痛", red: true },
+  { key: "blood_stool", label: "便血或黑便", red: true },
+  { key: "jaundice", label: "皮肤或眼睛发黄", red: true },
+  { key: "persistent_vomiting", label: "持续呕吐", red: true },
+  { key: "night_sweat_weightloss", label: "夜间盗汗伴明显消瘦", red: true },
+  { key: "orthopnea", label: "喘憋、不能平卧", red: true },
+  { key: "seizure", label: "抽搐", red: true },
+  { key: "severe_headache_vomit", label: "剧烈头痛伴呕吐", red: true },
+  { key: "weight_loss", label: "短期内明显消瘦", red: true },
 ];
 
 /** 病程选项 */

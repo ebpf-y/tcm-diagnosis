@@ -1,5 +1,5 @@
 /**
- * 经典方剂库（27 首）
+ * 经典方剂库（40 首）
  *
  * 组成与剂量以《伤寒论》《金匮要略》《太平惠民和剂局方》《脾胃论》
  * 《景岳全书》《温病条辨》等所载原方为准，剂量为现代汤剂常用参考量（克）。
@@ -109,7 +109,7 @@ export const FORMULAS: Record<string, Formula> = {
     functions: "补中益气，升阳举陷",
     analysis:
       "重用黄芪为君，补中益气、升阳固表；人参、白术、炙甘草健脾益气为臣；当归养血和营，陈皮理气和胃、使补而不滞，共为佐；升麻、柴胡升举清阳、引诸药上行为使。补气与升提并用，体现李东垣「甘温除热」之法。",
-    patternIds: ["piqixu", "feiqixu"],
+    patternIds: ["piqixu"],
     modifications: "中气下陷之脱肛、子宫脱垂加枳壳；自汗加浮小麦、牡蛎。",
     cautions: "阴虚发热、肝阳上亢者忌用；高血压患者慎用，须医师评估。",
     patent: "补中益气丸",
@@ -517,7 +517,7 @@ export const FORMULAS: Record<string, Formula> = {
     functions: "解表化湿，理气和中",
     analysis:
       "藿香芳香化湿、解表散寒、和中止呕为君；紫苏、白芷助其解表化湿为臣；半夏曲、陈皮燥湿化痰，厚朴、大腹皮行气除满，白术、茯苓健脾渗湿，桔梗宣肺利膈，共为佐；甘草、姜枣调和为使。外散风寒、内化湿浊，表里同治。",
-    patternIds: ["shire_yunpi"],
+    patternIds: ["fengshi_shubiao"],
     modifications: "表寒重加香薷；湿热重加黄连、滑石。",
     cautions: "阴虚火旺者慎用；藿香正气水含酒精，驾驶员、酒精过敏者及服用头孢类药物者禁用。",
     patent: "藿香正气口服液（无酒精型）、藿香正气软胶囊",
@@ -623,13 +623,13 @@ export const FORMULAS: Record<string, Formula> = {
     source: "《韩氏医通》",
     sourceNote: "方出明·韩懋《韩氏医通》，「交泰丸」方名见于后世（清·《四科简效方》），文献著录有异，特注明。",
     ingredients: [
-      { name: "黄连", dose: "3g" },
-      { name: "肉桂", dose: "1.5g" },
+      { name: "黄连", dose: "10g" },
+      { name: "肉桂", dose: "1g" },
     ],
     preparation: "水煎服，睡前温服；或研末为丸。",
     functions: "交通心肾，清心降火",
     analysis:
-      "黄连苦寒，直折心火于上为君；肉桂辛热，温补肾阳、引火归元于下为佐使。一寒一热、一降一温，使水火既济、心肾自交。药仅两味而配伍精妙。",
+      "黄连苦寒，直折心火于上为君；肉桂辛热，温补肾阳、引火归元于下为佐使。一寒一热、一降一温，使水火既济、心肾自交。药仅两味而配伍精妙——原方黄连与肉桂用量之比为十比一，取「水多火降」之意。",
     patternIds: ["xinshen_bujiao"],
     modifications: "肾阴虚甚合六味地黄丸；心烦甚加栀子、竹叶。",
     cautions: "黄连苦寒，脾胃虚寒者慎用；不宜久服。",
@@ -912,7 +912,7 @@ export const FORMULAS: Record<string, Formula> = {
     functions: "和解少阳，疏利枢机",
     analysis:
       "柴胡透达少阳之邪、疏利枢机为君；黄芩清泄少阳之热为臣，柴芩相配一散一清；半夏、生姜和胃降逆，人参、大枣、炙甘草益气和中、扶正达邪为佐使。为和解剂之祖方，邪在半表半里、枢机不利者宜之。",
-    patternIds: ["ganyu_qizhi"],
+    patternIds: ["shaoyang_shuli"],
     modifications: "胸胁苦满甚加香附、郁金；心烦明显加栀子。",
     cautions: "阴虚血少者慎用；少阳证误汗吐下后尤须医师斟酌；半夏须用炮制品。",
     patent: "小柴胡颗粒",
@@ -952,7 +952,7 @@ export const FORMULAS: Record<string, Formula> = {
     functions: "利水渗湿，温阳化气",
     analysis:
       "泽泻直达下焦、利水渗湿为君；猪苓、茯苓增强利水之功为臣；白术健脾燥湿、运化水湿，桂枝温阳化气、助膀胱气化以行水为佐使。通阳化气与利水渗湿并行，水湿内停、气化不利者宜之。",
-    patternIds: ["tanshi_zhongzu"],
+    patternIds: ["shuishi_neiting"],
     modifications: "水肿甚加车前子；兼表证加苏叶、防风。",
     cautions: "阴虚津亏者慎用；利水之剂中病即止，不宜久服。",
     patent: "五苓散（胶囊）",

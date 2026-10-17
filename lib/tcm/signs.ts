@@ -41,7 +41,7 @@ export const SIGNS: Sign[] = [
     category: "tongue",
     keywords: ["舌色淡白", "舌淡", "淡白舌"],
     weights: { yangxu: 3, qixu: 2 },
-    patterns: { piyangxu: 2, shenyangxu: 2, qixue_liangxu: 2 },
+    patterns: { piyangxu: 2, shenyangxu: 2, qixue_liangxu: 2, piqixu: 2 },
   },
   {
     key: "tongue_red",
@@ -80,8 +80,8 @@ export const SIGNS: Sign[] = [
     label: "舌苔厚腻",
     category: "tongue",
     keywords: ["苔厚腻", "苔厚", "厚腻", "苔腻"],
-    weights: { tanshi: 3, shire: 1 },
-    patterns: { tanshi_zhongzu: 2, shire_yunpi: 2, hanre_cuoza: 1 },
+    weights: { tanshi: 2 },
+    patterns: { tanshi_zhongzu: 2, shire_yunpi: 2, hanre_cuoza: 1, fengshi_shubiao: 2 },
   },
   {
     key: "coating_yellow",
@@ -154,7 +154,7 @@ export const SIGNS: Sign[] = [
     category: "face",
     keywords: ["浮肿", "眼睑肿", "水肿"],
     weights: { tanshi: 2, yangxu: 2 },
-    patterns: { tanshi_zhongzu: 2, shenyangxu: 2, piyangxu: 2 },
+    patterns: { tanshi_zhongzu: 2, shenyangxu: 2, piyangxu: 2, shuishi_neiting: 2 },
   },
   {
     key: "face_dark_circles",
@@ -186,7 +186,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["疲乏", "疲劳", "乏力", "没力气", "容易累", "神疲"],
     weights: { qixu: 3, yangxu: 1 },
-    patterns: { piqixu: 1, qixue_liangxu: 1, feiqixu: 1, piyangxu: 1 },
+    patterns: { piqixu: 3, qixue_liangxu: 1, feiqixu: 1, piyangxu: 1 },
   },
   {
     key: "sym_cold",
@@ -194,7 +194,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["怕冷", "畏寒", "手脚凉", "手脚冰凉", "手脚发凉", "肢冷"],
     weights: { yangxu: 3 },
-    patterns: { piyangxu: 3, shenyangxu: 3, fenghan_shubiao: 1 },
+    patterns: { piyangxu: 3, shenyangxu: 3, fenghan_shubiao: 2, fengshi_shubiao: 2 },
   },
   {
     key: "sym_heat",
@@ -210,7 +210,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["自汗", "出虚汗", "容易出汗", "爱出汗", "动则汗出"],
     weights: { qixu: 2, yangxu: 1 },
-    patterns: { feiqixu: 3, piqixu: 1 },
+    patterns: { feiqixu: 3, piqixu: 1, fenghan_shubiao: 1 },
   },
   {
     key: "sym_night_sweat",
@@ -219,6 +219,41 @@ export const SIGNS: Sign[] = [
     keywords: ["盗汗", "夜间出汗", "睡着出汗"],
     weights: { yinxu: 3 },
     patterns: { shenyinxu: 3, xinshen_bujiao: 1 },
+  },
+  {
+    key: "sym_no_sweat",
+    label: "无汗",
+    category: "symptom",
+    keywords: ["无汗", "不出汗", "没有汗", "不排汗"],
+    patterns: { fenghan_shubiao: 3, fengshi_shubiao: 2 },
+  },
+  {
+    key: "sym_alternating",
+    label: "往来寒热（忽冷忽热）",
+    category: "symptom",
+    keywords: ["忽冷忽热", "寒热往来", "往来寒热"],
+    patterns: { shaoyang_shuli: 3 },
+  },
+  {
+    key: "sym_stomach_burning",
+    label: "胃脘灼痛或烧心",
+    category: "symptom",
+    keywords: ["胃脘灼痛", "脘腹灼痛", "胃里烧灼", "胃中灼热", "烧心"],
+    patterns: { weiyinxu: 3, ganhuo_shangyan: 1, hanre_cuoza: 1 },
+  },
+  {
+    key: "sym_hungry_no_eat",
+    label: "饥不欲食",
+    category: "symptom",
+    keywords: ["饥不欲食", "饿了不想吃", "想吃但吃不下", "饿了吃不下"],
+    patterns: { weiyinxu: 3 },
+  },
+  {
+    key: "sym_urine_difficult",
+    label: "小便不利、排尿不畅",
+    category: "symptom",
+    keywords: ["小便不利", "排尿不畅", "尿少", "排尿困难"],
+    patterns: { shuishi_neiting: 3, shenyangxu: 1 },
   },
   // ---------- 症状自述：口渴与饮食 ----------
   {
@@ -259,7 +294,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["腹胀", "胀满", "脘腹", "胃胀"],
     weights: { tanshi: 2, qiyu: 1 },
-    patterns: { ganyu_pixu: 3, piqixu: 1, tanshi_zhongzu: 1 },
+    patterns: { ganyu_pixu: 3, piqixu: 3, tanshi_zhongzu: 2, shire_yunpi: 1 },
   },
   {
     key: "sym_belching",
@@ -283,7 +318,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["口黏", "嘴里黏", "口中黏腻"],
     weights: { tanshi: 2 },
-    patterns: { tanshi_zhongzu: 3, shire_yunpi: 1 },
+    patterns: { tanshi_zhongzu: 3, shire_yunpi: 1, fengshi_shubiao: 1 },
   },
   // ---------- 症状自述：二便 ----------
   {
@@ -300,7 +335,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["腹泻", "拉肚子", "便溏", "大便溏"],
     weights: { yangxu: 2, qixu: 1 },
-    patterns: { piyangxu: 3, piqixu: 1, shenyangxu: 1, ganyu_pixu: 1 },
+    patterns: { piyangxu: 3, piqixu: 3, shenyangxu: 1, ganyu_pixu: 1, fengshi_shubiao: 1 },
   },
   {
     key: "sym_dawn_diarrhea",
@@ -349,7 +384,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["闷闷不乐", "抑郁", "焦虑", "紧张", "心烦"],
     weights: { qiyu: 3 },
-    patterns: { ganyu_qizhi: 3, xinpi_liangxu: 1 },
+    patterns: { ganyu_qizhi: 3, xinpi_liangxu: 1, qizhi_xueyu: 2, ganyu_pixu: 2 },
   },
   {
     key: "sym_sighing",
@@ -365,7 +400,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["易怒", "急躁", "发火", "脾气暴躁", "烦躁易怒"],
     weights: { shire: 1, qiyu: 2 },
-    patterns: { ganhuo_shangyan: 3, ganyu_qizhi: 1 },
+    patterns: { ganhuo_shangyan: 3, ganyu_qizhi: 1, qizhi_xueyu: 1 },
   },
   {
     key: "sym_palpitation",
@@ -373,7 +408,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["心悸", "心慌", "怔忡"],
     weights: { qixu: 1 },
-    patterns: { xinpi_liangxu: 3, xinshen_bujiao: 1, qixue_liangxu: 1 },
+    patterns: { xinpi_liangxu: 3, xinshen_bujiao: 2, qixue_liangxu: 1 },
   },
   {
     key: "sym_forgetful",
@@ -381,7 +416,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["健忘", "忘事", "记忆力差"],
     weights: { xueyu: 1 },
-    patterns: { xinpi_liangxu: 3, qizhi_xueyu: 1, xinshen_bujiao: 1 },
+    patterns: { xinpi_liangxu: 3, qizhi_xueyu: 1, xinshen_bujiao: 2 },
   },
   // ---------- 症状自述：头面五官与肢体 ----------
   {
@@ -390,7 +425,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["头晕", "眩晕", "目眩"],
     weights: { qixu: 1 },
-    patterns: { qixue_liangxu: 3, ganxue_xu: 1, ganhuo_shangyan: 1, tanshi_zhongzu: 1 },
+    patterns: { qixue_liangxu: 3, ganxue_xu: 1, ganhuo_shangyan: 1, tanshi_zhongzu: 1, shuishi_neiting: 1 },
   },
   {
     key: "sym_headache",
@@ -405,7 +440,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["头重", "头沉", "头如裹"],
     weights: { tanshi: 2 },
-    patterns: { tanshi_zhongzu: 3, shire_yunpi: 1 },
+    patterns: { tanshi_zhongzu: 3, shire_yunpi: 1, fengshi_shubiao: 1 },
   },
   {
     key: "sym_eye_dry",
@@ -437,7 +472,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["胁胀", "胁肋", "胁痛", "乳房胀痛", "两胁"],
     weights: { qiyu: 3 },
-    patterns: { ganyu_qizhi: 3, ganyu_pixu: 1, qizhi_xueyu: 1 },
+    patterns: { ganyu_qizhi: 3, ganyu_pixu: 1, qizhi_xueyu: 1, shaoyang_shuli: 2 },
   },
   {
     key: "sym_lowerback",
@@ -445,7 +480,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["腰膝酸软", "腰痛", "腰酸"],
     weights: { yangxu: 2, yinxu: 1 },
-    patterns: { shenyangxu: 3, shenyinxu: 3, xinshen_bujiao: 1 },
+    patterns: { shenyangxu: 3, shenyinxu: 3, xinshen_bujiao: 3 },
   },
   {
     key: "sym_numbness",
@@ -493,7 +528,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: ["流清涕", "鼻塞流清", "清鼻涕", "鼻塞"],
     weights: { tebing: 1 },
-    patterns: { fenghan_shubiao: 3, feiqixu: 1 },
+    patterns: { fenghan_shubiao: 3, fengshi_shubiao: 2, feiqixu: 1 },
   },
   {
     key: "sym_sore_throat",
@@ -532,14 +567,14 @@ export const SIGNS: Sign[] = [
     label: "呕恶欲吐",
     category: "symptom",
     keywords: ["恶心", "呕恶", "想吐", "欲呕", "反胃"],
-    patterns: { hanre_cuoza: 3, tanshi_zhongzu: 1, shire_yunpi: 1 },
+    patterns: { hanre_cuoza: 3, tanshi_zhongzu: 1, shire_yunpi: 1, fengshi_shubiao: 3 },
   },
   {
     key: "sym_borborygmus",
     label: "肠鸣、大便不调",
     category: "symptom",
     keywords: ["肠鸣", "肚子咕咕", "腹中雷鸣"],
-    patterns: { hanre_cuoza: 3, piyangxu: 1 },
+    patterns: { hanre_cuoza: 3, piyangxu: 1, fengshi_shubiao: 1 },
   },
   // ---------- 症状自述：妇科与其他 ----------
   {
@@ -614,7 +649,7 @@ export const SIGNS: Sign[] = [
     weightScale: 0.5,
     keywords: ["脉细"],
     weights: { yinxu: 1 },
-    patterns: { qixue_liangxu: 2, ganxue_xu: 2, shenyinxu: 2 },
+    patterns: { qixue_liangxu: 2, ganxue_xu: 2, shenyinxu: 2, xinpi_liangxu: 2 },
   },
   {
     key: "pulse_xian",
@@ -627,7 +662,7 @@ export const SIGNS: Sign[] = [
   },
   {
     key: "pulse_hua",
-    label: "脉滑（脉道宽大流利）",
+    label: "脉滑（往来流利，如珠走盘）",
     category: "pulse",
     weightScale: 0.5,
     keywords: ["脉滑"],
@@ -641,7 +676,7 @@ export const SIGNS: Sign[] = [
     weightScale: 0.5,
     keywords: ["脉弱", "脉无力"],
     weights: { qixu: 2 },
-    patterns: { piqixu: 2, qixue_liangxu: 2, shenyangxu: 2, feiqixu: 1 },
+    patterns: { piqixu: 2, qixue_liangxu: 2, shenyangxu: 2, feiqixu: 1, xinpi_liangxu: 2 },
   },
   {
     key: "pulse_jiedai",
@@ -675,7 +710,7 @@ export const SIGNS: Sign[] = [
     category: "pulse",
     keywords: [],
     weights: { yangxu: 1 },
-    patterns: { fenghan_shubiao: 2, piyangxu: 1 },
+    patterns: { fenghan_shubiao: 2, piyangxu: 1, fengshi_shubiao: 2 },
   },
   {
     key: "pulse_huan",
@@ -691,7 +726,7 @@ export const SIGNS: Sign[] = [
     category: "pulse",
     keywords: [],
     weights: { tanshi: 1 },
-    patterns: { tanshi_zhongzu: 2, qixue_liangxu: 1 },
+    patterns: { tanshi_zhongzu: 2, qixue_liangxu: 1, shuishi_neiting: 1 },
   },
   {
     key: "pulse_wei",
@@ -915,7 +950,7 @@ export const SIGNS: Sign[] = [
     category: "symptom",
     keywords: [],
     weights: { tanshi: 1 },
-    patterns: { tanshi_zhongzu: 1, shire_yunpi: 1 },
+    patterns: { tanshi_zhongzu: 1, shire_yunpi: 1, fengshi_shubiao: 1 },
   },
   {
     key: "life_greasy",
