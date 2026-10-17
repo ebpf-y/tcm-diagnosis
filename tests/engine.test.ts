@@ -874,13 +874,16 @@ describe("君臣佐使结构化方解", () => {
 import {
   checkContraindications,
   buildCheckupAdvisories,
+  buildPulseAdvisories,
+  applyCourseWeighting,
 } from "@/lib/engine";
 import { acupointLocations } from "@/lib/tcm/acupoints";
-import { CONTRA_TAGS } from "@/lib/tcm/formula-tuning";
+import { CONTRA_TAGS, FORMULA_TUNING } from "@/lib/tcm/formula-tuning";
+import { CHIEF_COMPLAINT_OPTIONS } from "@/lib/tcm/intake";
 
 describe("checkContraindications 禁忌交叉校验", () => {
-  it("高血压病史 × 补中益气汤（feiqixu 方案）→ 警示", () => {
-    const plan = buildTreatmentPlan("feiqixu")!;
+  it("高血压病史 × 补中益气汤（脾气虚方案）→ 警示", () => {
+    const plan = buildTreatmentPlan("piqixu")!;
     const warnings = checkContraindications({
       formulaKeys: plan.formulas.map((f) => f.formula.key),
       history: ["hypertension"],
@@ -1174,5 +1177,341 @@ describe("报告访问令牌", () => {
     expect(a).not.toBe(b);
     expect(/^[A-Za-z0-9_-]+$/.test(a)).toBe(true);
     expect(a.length).toBeGreaterThanOrEqual(32);
+  });
+});
+
+// ------------------------------------------------------------------
+// 八纲判定层（P1）：表里/寒热/虚实的结构化归纳 + 寒热校正
+// ------------------------------------------------------------------
+
+import { deriveEightPrinciples, calibrateByNature } from "@/lib/engine/bagang";
+
+describe("八纲判定 deriveEightPrinciples", () => {
+  it("风寒表证：表证、偏寒、偏实", () => {
+    const ep = deriveEightPrinciples([
+      "sym_cold", "sym_fever", "sym_no_sweat", "sym_runny_nose", "pulse_fu", "pulse_jin",
+    ]);
+    expect(ep.biaoli.value).toBe("表证");
+    expect(ep.hanre.value).toBe("偏寒");
+    expect(ep.xushi.value).toBe("偏实");
+  });
+
+  it("肾阴虚里证：里证、偏热、偏虚", () => {
+    const ep = deriveEightPrinciples([
+      "sym_heat", "sym_night_sweat", "sym_lowerback", "tongue_red", "coating_less", "pulse_xi", "pulse_shuo",
+    ]);
+    expect(ep.biaoli.value).toBe("里证");
+    expect(ep.hanre.value).toBe("偏热");
+    expect(ep.xushi.value).toBe("偏虚");
+  });
+
+  it("寒热并见 → 寒热错杂；无体征 → 证据不足", () => {
+    const ep = deriveEightPrinciples(["sym_cold", "pulse_chi", "sym_heat", "tongue_red", "pulse_shuo"]);
+    expect(ep.hanre.value).toBe("寒热错杂");
+    expect(deriveEightPrinciples(["sym_appetite"]).biaoli.value).toBe("证据不足");
+  });
+
+  it("往来寒热 → 半表半里", () => {
+    const ep = deriveEightPrinciples(["sym_alternating", "sym_hypochondriac"]);
+    expect(ep.biaoli.value).toBe("半表半里");
+  });
+});
+
+describe("寒热校正 calibrateByNature", () => {
+  it("偏寒 decisive 时热性证候降权 0.85，寒性与平性证候不受影响", () => {
+    const signs = ["sym_cold", "sym_no_thirst", "pulse_chi", "tongue_pale", "sym_heat", "tongue_red"];
+    const hits = scorePatterns(signs);
+    const ep = deriveEightPrinciples(signs);
+    expect(ep.hanre.value).toBe("偏寒"); // 寒 4 项 vs 热 2 项
+    const calibrated = calibrateByNature(hits, ep);
+    // 热性证候（肾阴虚）被降权
+    const shenyinxuBefore = hits.find((h) => h.id === "shenyinxu")!;
+    const shenyinxuAfter = calibrated.find((h) => h.id === "shenyinxu")!;
+    expect(shenyinxuAfter.score).toBeCloseTo(Math.round(shenyinxuBefore.score * 0.85 * 10) / 10, 1);
+    // 寒性证候（脾阳虚）不受影响
+    const piyangBefore = hits.find((h) => h.id === "piyangxu")!;
+    expect(calibrated.find((h) => h.id === "piyangxu")!.score).toBe(piyangBefore.score);
+  });
+
+  it("寒热错杂时不校正（返回原数组）", () => {
+    const signs = ["sym_cold", "tongue_pale", "sym_heat", "tongue_red"];
+    const hits = scorePatterns(signs);
+    const ep = deriveEightPrinciples(signs);
+    expect(ep.hanre.value).toBe("寒热错杂");
+    expect(calibrateByNature(hits, ep)).toBe(hits);
+  });
+});
+
+describe("证候主症覆盖 lint（每个证候须有 ≥1 个主症级体征映射）", () => {
+  it("无主症级映射的证候永远无法成为主证（死证候）", () => {
+    for (const id of PATTERN_IDS) {
+      const hasChief = SIGNS.some((s) => (s.patterns?.[id] ?? 0) >= 3);
+      expect(hasChief, `证候「${PATTERNS[id].name}」缺少主症级（权重≥3）体征映射`).toBe(true);
+    }
+  });
+});
+
+// ------------------------------------------------------------------
+// 配伍禁忌 lint（十八反十九畏）：加减/化裁文本 × 本方组成的自动核对
+// ------------------------------------------------------------------
+
+describe("病程加权 applyCourseWeighting", () => {
+  it("急性病程（<1w）外感类证候 ×1.15，内伤证候与慢性病程不变", () => {
+    const signs = ["sym_cold", "sym_fever", "sym_no_sweat", "sym_runny_nose", "coating_thin_white", "pulse_fu", "pulse_jin"];
+    const base = scorePatterns(signs);
+    const boosted = applyCourseWeighting(base, "<1w");
+    const fenghanBase = base.find((h) => h.id === "fenghan_shubiao")!.score;
+    const fenghanBoosted = boosted.find((h) => h.id === "fenghan_shubiao")!.score;
+    expect(fenghanBoosted).toBeCloseTo(Math.round(fenghanBase * 1.15 * 10) / 10, 1);
+    // 非外感证候不受影响
+    const piqixuBase = base.find((h) => h.id === "piqixu");
+    const piqixuBoosted = boosted.find((h) => h.id === "piqixu");
+    expect(piqixuBoosted?.score ?? 0).toBe(piqixuBase?.score ?? 0);
+    // 慢性病程不加权（返回原数组）
+    expect(applyCourseWeighting(base, ">6m")).toBe(base);
+    expect(applyCourseWeighting(base, undefined)).toBe(base);
+  });
+
+  it("1w-1m 病程 ×1.08；封顶 100", () => {
+    const signs = ["sym_cold", "sym_fever", "sym_no_sweat", "sym_runny_nose", "coating_thin_white", "pulse_fu", "pulse_jin"];
+    const boosted = applyCourseWeighting(scorePatterns(signs), "1w-1m");
+    const fenghan = boosted.find((h) => h.id === "fenghan_shubiao")!;
+    expect(fenghan.score).toBeLessThanOrEqual(100);
+  });
+});
+
+describe("配伍禁忌 lint（十八反十九畏）", () => {
+  /** 反/畏药组：任一组与另一组同现（本方组成内，或加减文本引入）即违规 */
+  const PAIRS: [string[], string[]][] = [
+    // 十八反
+    [["附子", "川乌", "草乌", "乌头"], ["半夏", "瓜蒌", "贝母", "白蔹", "白及"]],
+    [["甘草"], ["甘遂", "大戟", "芫花", "海藻"]],
+    [["藜芦"], ["人参", "党参", "沙参", "玄参", "苦参", "细辛", "白芍", "赤芍"]],
+    // 十九畏
+    [["人参", "党参"], ["五灵脂"]],
+    [["肉桂", "官桂"], ["赤石脂"]],
+    [["丁香"], ["郁金"]],
+    [["巴豆"], ["牵牛"]],
+    [["硫黄"], ["朴硝"]],
+    [["水银"], ["砒霜"]],
+    [["狼毒"], ["密陀僧"]],
+    [["牙硝"], ["三棱"]],
+  ];
+  const normalize = (name: string) => name.replace(/（.*）/, "").replace(/[制法姜炙生炒煅酒蜜醋盐麸煨]/g, "");
+  const mentions = (text: string, herb: string) => text.includes(herb);
+  const conflict = (herbsA: string[], herbsB: string[]): string | null => {
+    for (const [g1, g2] of PAIRS) {
+      const a = herbsA.filter((h) => g1.some((g) => mentions(h, g)));
+      const b = herbsB.filter((h) => g2.some((g) => mentions(h, g)));
+      if (a.length > 0 && b.length > 0) return `${a.join("/")} × ${b.join("/")}`;
+      const a2 = herbsA.filter((h) => g2.some((g) => mentions(h, g)));
+      const b2 = herbsB.filter((h) => g1.some((g) => mentions(h, g)));
+      if (a2.length > 0 && b2.length > 0) return `${a2.join("/")} × ${b2.join("/")}`;
+    }
+    return null;
+  };
+
+  it("全部方剂：组成内部无十八反十九畏同方", () => {
+    for (const f of Object.values(FORMULAS)) {
+      const herbs = f.ingredients.map((i) => normalize(i.name));
+      expect(conflict(herbs, herbs), `${f.name} 组成内违规`).toBeNull();
+    }
+  });
+
+  it("动态加减（modifications + modRules）引入的药味不与本方组成相反/相畏", () => {
+    const ALL_HERBS = Array.from(
+      new Set(PAIRS.flatMap(([a, b]) => [...a, ...b]))
+    );
+    for (const f of Object.values(FORMULAS)) {
+      const base = f.ingredients.map((i) => normalize(i.name));
+      const tuning = FORMULA_TUNING[f.key];
+      const texts = [f.modifications, ...(tuning?.modRules ?? []).map((r) => r.text)];
+      for (const text of texts) {
+        const added = ALL_HERBS.filter((h) => text.includes(h));
+        expect(
+          conflict(added, base),
+          `${f.name} 的加减「${text}」引入 ${added.join("/")} 与本方组成冲突`
+        ).toBeNull();
+      }
+    }
+  });
+});
+
+// ------------------------------------------------------------------
+// 药味级安全体系（成分派生标签 + 药物识别扩展）
+// ------------------------------------------------------------------
+
+import { herbDerivedContraTags } from "@/lib/engine";
+
+describe("药味级禁忌标签（成分派生）", () => {
+  it("含麻黄/附子/半夏/桃仁红花的方剂自动继承风险标签", () => {
+    expect(herbDerivedContraTags("mahuang")).toEqual(
+      expect.arrayContaining(["高血压", "孕妇", "正在服用抗抑郁药"])
+    );
+    expect(herbDerivedContraTags("fuzilizhong")).toEqual(
+      expect.arrayContaining(["孕妇", "哺乳期", "儿童", "老年"])
+    );
+    expect(herbDerivedContraTags("erchen")).toContain("孕妇"); // 法半夏
+    expect(herbDerivedContraTags("xuefu_zhuyu")).toEqual(
+      expect.arrayContaining(["孕妇", "正在服用抗凝/抗血小板药物"]) // 桃仁、红花
+    );
+  });
+
+  it("无风险药味的方剂不产生派生标签（防警示疲劳：甘草等不标记）", () => {
+    expect(herbDerivedContraTags("sijunzi")).toEqual([]);
+    expect(herbDerivedContraTags("yupingfeng")).toEqual([]);
+  });
+
+  it("抗抑郁药 × 麻黄汤（MAOI/SSRI 与麻黄碱风险）→ 警示", () => {
+    const warnings = checkContraindications({ formulaKeys: ["mahuang"], medications: "舍曲林" });
+    expect(warnings.some((w) => w.conditions.includes("正在服用抗抑郁药"))).toBe(true);
+  });
+
+  it("商品名识别：拜瑞妥（利伐沙班）× 血府逐瘀汤 → 抗凝警示", () => {
+    const warnings = checkContraindications({ formulaKeys: ["xuefu_zhuyu"], medications: "拜瑞妥" });
+    expect(warnings.some((w) => w.conditions.includes("正在服用抗凝/抗血小板药物"))).toBe(true);
+  });
+
+  it("降压药类别词：氨氯地平 × 麻黄汤 → 高血压警示；含甘草补益方不误报", () => {
+    const warnings = checkContraindications({ formulaKeys: ["mahuang"], medications: "苯磺酸氨氯地平" });
+    expect(warnings.some((w) => w.conditions.includes("高血压"))).toBe(true);
+    // 警示疲劳防线：四君子汤含甘草但无方级风险标签 → 高血压无警示
+    expect(
+      checkContraindications({ formulaKeys: ["sijunzi"], medications: "苯磺酸氨氯地平" })
+    ).toEqual([]);
+  });
+});
+
+// ------------------------------------------------------------------
+// 安全底线加固（P0）：否定语境匹配 / 孕哺禁忌 / 脉象危象转诊提示
+// ------------------------------------------------------------------
+
+describe("否定语境匹配（安全底线：不/没/无 不再正向命中症状）", () => {
+  it("「不失眠」「没有口干」不再误命中对应体征", () => {
+    expect(matchSignsFromText("最近不失眠，睡得挺好", "symptom")).not.toContain("sym_insomnia");
+    expect(matchSignsFromText("没有口干，也不想喝水", "symptom")).not.toContain("sym_dry");
+    expect(matchSignsFromText("常年不容易感冒", "symptom")).not.toContain("sym_catch_cold");
+    expect(matchSignsFromText("口不干，大便也正常", "symptom")).not.toContain("sym_dry");
+  });
+
+  it("否定形式的症状词 = 阳性体征：无汗/睡不着/吃不下 正确命中", () => {
+    const noSweat = matchSignsFromText("怕冷发热，无汗", "symptom");
+    expect(noSweat).toContain("sym_no_sweat");
+    expect(noSweat).toContain("sym_cold");
+    expect(matchSignsFromText("最近睡不着，还多梦", "symptom")).toContain("sym_insomnia");
+    expect(matchSignsFromText("吃不下饭，没胃口", "symptom")).toContain("sym_appetite");
+  });
+
+  it("不含否定的常规表述不受影响", () => {
+    const keys = matchSignsFromText("最近特别怕冷，手脚冰凉，还容易疲劳。", "symptom");
+    expect(keys).toEqual(expect.arrayContaining(["sym_cold", "sym_fatigue"]));
+  });
+});
+
+describe("孕哺状态禁忌校验（安全底线）", () => {
+  it("怀孕中 × 破血方（血府逐瘀汤）→ 孕妇警示", () => {
+    const warnings = checkContraindications({ formulaKeys: ["xuefu_zhuyu"], pregnancy: "怀孕中" });
+    expect(warnings.length).toBe(1);
+    expect(warnings[0].conditions).toContain("孕妇");
+  });
+
+  it("哺乳期 × 附子类（附子理中丸）→ 哺乳期警示；备孕 × 活血方 → 备孕警示", () => {
+    const lact = checkContraindications({ formulaKeys: ["fuzilizhong"], pregnancy: "哺乳期" });
+    expect(lact[0].conditions).toContain("哺乳期");
+    const prep = checkContraindications({ formulaKeys: ["taohong_siwu"], pregnancy: "备孕中" });
+    expect(prep[0].conditions).toContain("备孕");
+  });
+
+  it("孕期不禁的平和扶正方（四君子汤）→ 无警示；未填写孕哺状态 → 无警示", () => {
+    expect(checkContraindications({ formulaKeys: ["sijunzi"], pregnancy: "怀孕中" })).toEqual([]);
+    expect(checkContraindications({ formulaKeys: ["xuefu_zhuyu"] })).toEqual([]);
+  });
+
+  it("intakeSummary 记录孕哺状态（供医师与报告核对）", () => {
+    const note = intakeSummary(
+      emptyIntake({ gender: "female", female: { cycle: "规律", flow: "正常", pain: false, leukorrhea: false, pregnancy: "怀孕中" } })
+    );
+    expect(note).toContain("孕哺状态：怀孕中");
+  });
+});
+
+describe("脉象危象与心悸转诊提示（安全底线）", () => {
+  it("结代 → 建议心电图；散脉 → 立即就医；疾脉 → 就医查明", () => {
+    expect(buildPulseAdvisories(["pulse_jiedai"]).some((a) => a.includes("心电图"))).toBe(true);
+    expect(buildPulseAdvisories(["pulse_san"]).some((a) => a.includes("立即就医"))).toBe(true);
+    expect(buildPulseAdvisories(["pulse_ji"]).some((a) => a.includes("就医"))).toBe(true);
+    expect(buildPulseAdvisories(["sym_cold"])).toEqual([]);
+  });
+
+  it("反复心悸 → 提示先行心电图等检查排除器质性问题", () => {
+    const advisories = buildPulseAdvisories(["sym_palpitation"]);
+    expect(advisories.some((a) => a.includes("心电图"))).toBe(true);
+  });
+});
+
+// ------------------------------------------------------------------
+// 方证错位修正回归（P0）：藿香正气 / 小柴胡 / 五苓散 / 补中益气归位
+// ------------------------------------------------------------------
+
+describe("方证对应归位回归", () => {
+  it("肝郁气滞不再挂小柴胡汤（归少阳枢机不利证）", () => {
+    expect(PATTERNS.ganyu_qizhi.formulaKeys).not.toContain("xiaochaihu");
+    const plan = buildTreatmentPlan("ganyu_qizhi")!;
+    expect(plan.formulas.map((f) => f.formula.key)).toEqual(["chaihu_shugan", "sini"]);
+  });
+
+  it("湿热蕴脾不再挂藿香正气（归风寒夹湿证）；痰湿中阻不再挂五苓散（归水湿内停证）", () => {
+    expect(buildTreatmentPlan("shire_yunpi")!.formulas.map((f) => f.formula.key)).toEqual(["ganlu_xiaodu"]);
+    expect(buildTreatmentPlan("tanshi_zhongzu")!.formulas.map((f) => f.formula.key)).toEqual(["erchen", "pingwei"]);
+    expect(buildTreatmentPlan("fengshi_shubiao")!.formulas[0].formula.key).toBe("huoxiang_zhengqi");
+    expect(buildTreatmentPlan("shuishi_neiting")!.formulas[0].formula.key).toBe("wuling");
+    expect(buildTreatmentPlan("shaoyang_shuli")!.formulas[0].formula.key).toBe("xiaochaihu");
+  });
+
+  it("补中益气汤归脾气虚（含中气下陷），不再挂肺气虚", () => {
+    expect(PATTERNS.piqixu.formulaKeys).toContain("buzhong_yiqi");
+    expect(FORMULAS.buzhong_yiqi.patternIds).toEqual(["piqixu"]);
+    expect(buildTreatmentPlan("feiqixu")!.formulas.map((f) => f.formula.key)).not.toContain("buzhong_yiqi");
+  });
+
+  it("交泰丸黄连:肉桂 = 10:1（原方比例）", () => {
+    const jiaotai = FORMULAS.jiaotai;
+    expect(jiaotai.ingredients.find((i) => i.name === "黄连")!.dose).toBe("10g");
+    expect(jiaotai.ingredients.find((i) => i.name === "肉桂")!.dose).toBe("1g");
+  });
+});
+
+// ------------------------------------------------------------------
+// 新证候端到端：少阳 / 风寒夹湿 / 水湿内停
+// ------------------------------------------------------------------
+
+describe("新证候端到端", () => {
+  it("往来寒热 + 口苦 + 胁胀 + 呕恶 → 少阳枢机不利证居首", () => {
+    const hits = scorePatterns(["sym_alternating", "sym_bitter", "sym_hypochondriac", "sym_nausea"]);
+    expect(hits[0].id).toBe("shaoyang_shuli");
+    expect(hits[0].hasChiefHit).toBe(true);
+  });
+
+  it("恶寒无汗 + 呕恶 + 便溏 + 头身困重 → 风寒夹湿证居首", () => {
+    const hits = scorePatterns(["sym_cold", "sym_no_sweat", "sym_nausea", "sym_diarrhea", "sym_head_heavy"]);
+    expect(hits[0].id).toBe("fengshi_shubiao");
+  });
+
+  it("小便不利 + 眼睑浮肿 + 头眩 → 水湿内停证居首", () => {
+    const hits = scorePatterns(["sym_urine_difficult", "face_edema", "sym_dizzy"]);
+    expect(hits[0].id).toBe("shuishi_neiting");
+  });
+
+  it("急重症红旗词条扩充：≥8 项且均不产生体征", () => {
+    const reds = CHIEF_COMPLAINT_OPTIONS.filter((o) => o.red);
+    expect(reds.length).toBeGreaterThanOrEqual(8);
+    for (const r of reds) {
+      expect(intakeToSigns(emptyIntake({ chiefComplaints: [r.key] }))).toEqual([]);
+    }
+  });
+
+  it("忽冷忽热主诉入口直接产出少阳体征", () => {
+    const keys = intakeToSigns(emptyIntake({ chiefComplaints: ["alternating"] }));
+    expect(keys).toContain("sym_alternating");
   });
 });
