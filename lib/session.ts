@@ -28,10 +28,36 @@ export interface ChannelResult {
     course?: string;
     /** 近期体检异常 key（intake.ts CHECKUP_OPTIONS） */
     checkup?: string[];
+    /** 孕哺状态（intake.ts：备孕中/怀孕中/哺乳期；用于方药禁忌强制校验） */
+    pregnancy?: string;
+    /** 初诊 PRO 基线（可选，1~5；复诊据此量化对比） */
+    pro?: ProRatings;
   };
   /** 脉诊采集模式（intake 渠道；expert 时脉象体征不参与降权） */
   pulseMode?: "amateur" | "expert";
 }
+
+/** 患者报告结局（PRO）自评：1=最差 ~ 5=最好；0/缺省表示未评 */
+export interface ProRatings {
+  /** 睡眠质量 */
+  sleep?: number;
+  /** 精力体力 */
+  energy?: number;
+  /** 总体不适程度（5=无不适） */
+  overall?: number;
+}
+
+/** PRO 三个维度定义（intake 基线与 followup 复诊共用） */
+export const PRO_DIMENSIONS: {
+  key: keyof ProRatings;
+  label: string;
+  low: string;
+  high: string;
+}[] = [
+  { key: "sleep", label: "睡眠质量", low: "很差", high: "很好" },
+  { key: "energy", label: "精力体力", low: "很差", high: "很好" },
+  { key: "overall", label: "总体不适", low: "很重", high: "很轻" },
+];
 
 const STORAGE_KEY = "tcm.channels.v1";
 
@@ -105,6 +131,16 @@ export function getMyReportIds(): string[] {
 
 export function getMyReportToken(id: string): string | undefined {
   return getMyReports().find((r) => r.id === id)?.token;
+}
+
+/** 删除本机持有的报告引用（报告被删除或使用者主动清理时） */
+export function removeMyReport(id: string): void {
+  try {
+    const list = getMyReports().filter((r) => r.id !== id);
+    localStorage.setItem(MY_REPORTS_KEY, JSON.stringify(list));
+  } catch {
+    // localStorage 不可用时忽略
+  }
 }
 
 export const CHANNEL_LABELS: Record<string, string> = {

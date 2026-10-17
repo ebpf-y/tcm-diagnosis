@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { SIGNS } from "@/lib/tcm/signs";
 import { CHIEF_COMPLAINT_OPTIONS } from "@/lib/tcm/intake";
-import { getMyReportIds, getMyReportToken } from "@/lib/session";
+import {
+  getMyReportIds,
+  getMyReportToken,
+  PRO_DIMENSIONS,
+  type ProRatings,
+} from "@/lib/session";
 import { TREND_LABELS, type FollowUpTrend } from "@/lib/engine/followup";
 import type { PatternHit } from "@/lib/engine";
 import ScoreBars from "@/components/ScoreBars";
@@ -22,6 +27,7 @@ interface FollowUpResult {
   after: PatternHit[];
   trend: FollowUpTrend;
   trendText: string;
+  pro?: ProRatings;
 }
 
 /** 趋势提示配色：好转绿色系 / 平稳中性 / 有变化朱砂色警示 */
@@ -48,6 +54,13 @@ export default function FollowUpPage() {
   const [noPatterns, setNoPatterns] = useState(false);
   const [kept, setKept] = useState<Set<string>>(new Set());
   const [added, setAdded] = useState<Set<string>>(new Set());
+  const [pro, setPro] = useState<{ sleep: number; energy: number; overall: number }>({
+    sleep: 0,
+    energy: 0,
+    overall: 0,
+  });
+  const [baselinePro, setBaselinePro] = useState<ProRatings | null>(null);
+  const [prevPro, setPrevPro] = useState<ProRatings | null>(null);
   const [result, setResult] = useState<FollowUpResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -81,11 +94,13 @@ export default function FollowUpPage() {
           result: {
             primary?: { name?: string };
             patterns?: { primary?: PatternHit; signKeys?: string[] } | null;
+            proBaseline?: ProRatings | null;
           };
         };
       })
       .then((d) => {
         const keys = d.result.patterns?.signKeys;
+        setBaselinePro(d.result.proBaseline ?? null);
         if (!keys || keys.length === 0) {
           setNoPatterns(true);
           return;
@@ -120,11 +135,36 @@ export default function FollowUpPage() {
       const res = await fetch("/api/followup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reportId, signKeys: Array.from(keys), token: token ?? undefined }),
+        body: JSON.stringify({
+          reportId,
+          signKeys: Array.from(keys),
+          token: token ?? undefined,
+          // 患者自评（PRO）：已填写的维度随复诊入库，供下次复诊量化对比
+          pro:
+            pro.sleep || pro.energy || pro.overall
+              ? {
+                  ...(pro.sleep ? { sleep: pro.sleep } : {}),
+                  ...(pro.energy ? { energy: pro.energy } : {}),
+                  ...(pro.overall ? { overall: pro.overall } : {}),
+                }
+              : undefined,
+        }),
       });
       const data = (await res.json()) as FollowUpResult & { error?: string };
       if (!res.ok) throw new Error(data.error ?? "复诊复评失败");
       setResult(data);
+      // 取上一次复诊的 PRO 作对比（GET 列表最新在前，第 0 条即本次）
+      if (data.pro && token) {
+        void fetch(
+          `/api/followup?reportId=${reportId}&token=${encodeURIComponent(token)}`
+        )
+          .then((r) => (r.ok ? r.json() : []))
+          .then((list: { id: string; pro?: ProRatings }[]) => {
+            const prev = list.slice(1).find((f) => f.pro && (f.pro.sleep || f.pro.energy || f.pro.overall));
+            setPrevPro(prev?.pro ?? null);
+          })
+          .catch(() => undefined);
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "复诊复评失败");
@@ -221,6 +261,42 @@ export default function FollowUpPage() {
             </section>
           </div>
 
+          {/* 患者自评（PRO）：量化结局指标，与初诊基线及上次复诊对比 */}
+          {result.pro && (
+            <section className="rounded-xl border border-rice-dark bg-white p-6">
+              <h2 className="mb-3 font-semibold">近况自评（本次记录）</h2>
+              <div className="flex flex-wrap gap-6">
+                {PRO_DIMENSIONS.map((d) => {
+                  const v = result.pro?.[d.key];
+                  if (!v) return null;
+                  const base = baselinePro?.[d.key];
+                  const prev = prevPro?.[d.key];
+                  const fmt = (delta: number) =>
+                    ` ${delta > 0 ? "+" : ""}${delta}`;
+                  return (
+                    <div key={d.key} className="text-center">
+                      <p className="text-2xl font-bold text-cinnabar">{v}</p>
+                      <p className="text-xs text-ink-light">
+                        {d.label}（{d.low}~{d.high}）
+                      </p>
+                      {base ? (
+                        <p className={`text-xs ${v - base > 0 ? "text-green-600" : v - base < 0 ? "text-cinnabar" : "text-ink-light/60"}`}>
+                          较初诊{fmt(v - base)}
+                        </p>
+                      ) : null}
+                      {prev ? (
+                        <p className="text-xs text-ink-light/60">较上次复诊{fmt(v - prev)}</p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-xs text-ink-light/70">
+                三项均为 1~5 分、分值越高状态越好；自评变化与证候趋势相互印证，多次复诊的变化曲线比单次分值更有意义。
+              </p>
+            </section>
+          )}
+
           <div className="flex flex-wrap gap-3">
             <a
               href="/report"
@@ -309,6 +385,37 @@ export default function FollowUpPage() {
                 </li>
               ))}
             </ul>
+          </section>
+
+          <section className="rounded-xl border border-rice-dark bg-white p-6">
+            <h2 className="mb-1 font-semibold">近况自评（选填，1~5 分）</h2>
+            <p className="mb-3 text-xs text-ink-light">
+              量化记录睡眠、精力与总体不适。若初诊已填基线，结果页将显示「较初诊」变化；多次复诊可逐级对比。
+            </p>
+            <div className="space-y-3">
+              {PRO_DIMENSIONS.map((d) => (
+                <div key={d.key} className="flex flex-wrap items-center gap-2">
+                  <span className="w-16 text-sm">{d.label}</span>
+                  {[1, 2, 3, 4, 5].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setPro((p) => ({ ...p, [d.key]: p[d.key] === v ? 0 : v }))}
+                      className={`rounded-full border px-3 py-1 text-sm transition ${
+                        pro[d.key] === v
+                          ? "border-cinnabar bg-cinnabar text-white"
+                          : "border-rice-dark text-ink-light hover:border-cinnabar hover:text-cinnabar"
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                  <span className="text-xs text-ink-light/70">
+                    1={d.low}，5={d.high}
+                  </span>
+                </div>
+              ))}
+            </div>
           </section>
 
           {error && <p className="text-sm text-red-600">{error}</p>}

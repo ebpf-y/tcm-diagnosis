@@ -24,3 +24,23 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     inputSummary: JSON.parse(report.inputSummary),
   });
 }
+
+/**
+ * DELETE /api/report/[id]?token=xxx —— 删除报告及其全部复诊记录
+ * （隐私合规：使用者可随时要求删除自己的报告数据；须持访问令牌）
+ */
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+  const report = await prisma.report.findUnique({ where: { id: params.id } });
+  if (!report) {
+    return NextResponse.json({ error: "报告不存在" }, { status: 404 });
+  }
+  const token = new URL(req.url).searchParams.get("token");
+  if (!canAccessReport(report, token)) {
+    // 统一返回 404，避免通过 403 探测报告是否存在
+    return NextResponse.json({ error: "报告不存在" }, { status: 404 });
+  }
+  // FollowUp 表无外键级联（schema 未建 relation），手动先行清理
+  await prisma.followUp.deleteMany({ where: { reportId: report.id } });
+  await prisma.report.delete({ where: { id: report.id } });
+  return NextResponse.json({ ok: true });
+}

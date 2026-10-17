@@ -3,7 +3,10 @@ import { prisma } from "@/lib/db";
 import { canAccessReport } from "@/lib/report-access";
 import type { ConstitutionId } from "@/lib/tcm/constitutions";
 import type { PatternHit, TreatmentPlan } from "@/lib/engine";
+import type { EightPrinciples } from "@/lib/engine/bagang";
 import ReportSections from "@/components/ReportSections";
+import ReportDeleteButton from "@/components/ReportDeleteButton";
+import PrintButton from "@/components/PrintButton";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +19,7 @@ interface StoredResult {
   channelNotes: Record<string, string>;
   patterns?: { primary: PatternHit; secondary: PatternHit[]; signKeys: string[] } | null;
   plan?: TreatmentPlan | null;
+  bagang?: EightPrinciples | null;
   demographics?: { gender?: string; ageGroup?: string } | null;
 }
 
@@ -60,7 +64,8 @@ export default async function ReportDetailPage({
 
       <ReportSections data={result} analysis={report.summary} />
 
-      <div className="flex gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <PrintButton />
         <a
           href="/report"
           className="inline-block rounded-lg border border-rice-dark px-5 py-2 text-sm text-ink-light hover:bg-rice"
@@ -73,6 +78,7 @@ export default async function ReportDetailPage({
         >
           复诊复评 →
         </a>
+        <ReportDeleteButton reportId={report.id} token={searchParams.token} />
       </div>
     </div>
   );

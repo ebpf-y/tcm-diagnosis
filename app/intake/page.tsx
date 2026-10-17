@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { saveChannelResult } from "@/lib/session";
+import { saveChannelResult, PRO_DIMENSIONS } from "@/lib/session";
 import {
   CHIEF_COMPLAINT_OPTIONS,
   COURSE_OPTIONS,
@@ -22,6 +22,7 @@ import {
   type ListeningForm,
   type FemaleForm,
   type MaleForm,
+  PREGNANCY_OPTIONS,
 } from "@/lib/tcm/intake";
 
 interface IntakeResponse {
@@ -100,8 +101,13 @@ export default function IntakePage() {
   const [medications, setMedications] = useState("");
   const [lifestyle, setLifestyle] = useState<string[]>([]);
   const [checkup, setCheckup] = useState<string[]>([]);
+  const [pro, setPro] = useState<{ sleep: number; energy: number; overall: number }>({
+    sleep: 0,
+    energy: 0,
+    overall: 0,
+  });
   const [femaleSkipped, setFemaleSkipped] = useState(false);
-  const [female, setFemale] = useState<FemaleForm>({ cycle: "", flow: "", pain: false, leukorrhea: false });
+  const [female, setFemale] = useState<FemaleForm>({ cycle: "", flow: "", pain: false, leukorrhea: false, pregnancy: "" });
   const [maleSkipped, setMaleSkipped] = useState(false);
   const [male, setMale] = useState<MaleForm>({ emission: false, premature: false, nightUrine: false });
   const [pulse, setPulse] = useState<PulseForm>({ rate: null, strength: "", depth: "", width: "", rhythm: "" });
@@ -199,7 +205,24 @@ export default function IntakePage() {
         weight: 2,
         note: data.note,
         signKeys: data.signKeys,
-        demographics: { gender, ageGroup, history: form.history, medications: form.medications, course, checkup },
+        demographics: {
+          gender,
+          ageGroup,
+          history: form.history,
+          medications: form.medications,
+          course,
+          checkup,
+          pregnancy: gender === "female" && !femaleSkipped ? female.pregnancy : undefined,
+          // 初诊 PRO 基线：复诊据此量化对比（与复诊自评同一口径）
+          pro:
+            pro.sleep || pro.energy || pro.overall
+              ? {
+                  ...(pro.sleep ? { sleep: pro.sleep } : {}),
+                  ...(pro.energy ? { energy: pro.energy } : {}),
+                  ...(pro.overall ? { overall: pro.overall } : {}),
+                }
+              : undefined,
+        },
         pulseMode: pulseSkipped ? undefined : pulseMode,
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -355,6 +378,22 @@ export default function IntakePage() {
                 <div>
                   <p className="mb-1 text-xs font-medium text-ink-light">经量</p>
                   <OptionGroup options={["正常", "量少色淡", "量多"]} selected={female.flow ? [female.flow] : []} onToggle={(k) => setFemale((f) => ({ ...f, flow: k as FemaleForm["flow"] }))} multi={false} />
+                </div>
+                <div>
+                  <p className="mb-1 text-xs font-medium text-ink-light">孕哺状态（方药禁忌校验依据，请如实选择）</p>
+                  <OptionGroup
+                    options={PREGNANCY_OPTIONS}
+                    selected={female.pregnancy ? [female.pregnancy] : []}
+                    onToggle={(k) => setFemale((f) => ({ ...f, pregnancy: k as FemaleForm["pregnancy"] }))}
+                    multi={false}
+                  />
+                  {(female.pregnancy === "怀孕中" || female.pregnancy === "哺乳期" || female.pregnancy === "备孕中") && (
+                    <p className="mt-1 rounded border border-amber-400 bg-amber-50 p-2 text-xs text-amber-800">
+                      {female.pregnancy === "备孕中"
+                        ? "备孕期间方药禁忌将与活血、温阳等方剂自动核对，调理方案请一律先经医师确认。"
+                        : "孕期/哺乳期用药直接关系胎儿与婴儿安全：报告中的方药参考将与您的状态自动核对并出具警示，任何调理请一律先经医师面诊。"}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="mb-1 text-xs font-medium text-ink-light">其他</p>
@@ -769,6 +808,31 @@ export default function IntakePage() {
             <OptionGroup options={LIFESTYLE_OPTIONS} selected={lifestyle} onToggle={(k) => setLifestyle((l) => toggle(l, k))} />
             <p className="mb-1 mt-4 text-xs font-medium text-ink-light">近一年体检异常（多选，无则不选）</p>
             <OptionGroup options={CHECKUP_OPTIONS} selected={checkup} onToggle={(k) => setCheckup((l) => toggle(l, k))} />
+          </Section>
+
+          <Section title="八、近况自评（选填，1~5 分）" hint="将作为初诊基线存档，复诊时量化对比变化">
+            <div className="space-y-3">
+              {PRO_DIMENSIONS.map((d) => (
+                <div key={d.key} className="flex flex-wrap items-center gap-2">
+                  <span className="w-16 text-sm">{d.label}</span>
+                  {[1, 2, 3, 4, 5].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setPro((p) => ({ ...p, [d.key]: p[d.key] === v ? 0 : v }))}
+                      className={`rounded-full border px-3 py-1 text-sm transition ${
+                        pro[d.key] === v
+                          ? "border-cinnabar bg-cinnabar text-white"
+                          : "border-rice-dark text-ink-light hover:border-cinnabar hover:text-cinnabar"
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                  <span className="text-xs text-ink-light/70">1={d.low}，5={d.high}</span>
+                </div>
+              ))}
+            </div>
           </Section>
 
           {error && <p className="text-sm text-red-600">{error}</p>}

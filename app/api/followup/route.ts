@@ -32,6 +32,29 @@ interface FollowUpResult {
   after: PatternHit[];
   trend: FollowUpTrend;
   trendText: string;
+  /** 患者自评（PRO）：1~5 分，0/缺省表示未评（下次复诊可与本次对比） */
+  pro?: ProRatings;
+}
+
+/** 患者报告结局自评（可选，1=最差 ~ 5=最好） */
+export interface ProRatings {
+  /** 睡眠质量 */
+  sleep?: number;
+  /** 精力体力 */
+  energy?: number;
+  /** 总体不适程度（5=无不适） */
+  overall?: number;
+}
+
+function parsePro(input: unknown): ProRatings | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const o = input as Record<string, unknown>;
+  const out: ProRatings = {};
+  for (const key of ["sleep", "energy", "overall"] as const) {
+    const v = o[key];
+    if (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 5) out[key] = v;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -42,7 +65,12 @@ interface FollowUpResult {
  */
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as { reportId?: unknown; signKeys?: unknown; token?: unknown };
+    const body = (await req.json()) as {
+      reportId?: unknown;
+      signKeys?: unknown;
+      token?: unknown;
+      pro?: unknown;
+    };
 
     if (typeof body.reportId !== "string" || body.reportId.length === 0) {
       return NextResponse.json({ error: "缺少 reportId" }, { status: 400 });
@@ -103,6 +131,7 @@ export async function POST(req: Request) {
       after: afterHits.slice(0, 3),
       trend,
       trendText,
+      pro: parsePro(body.pro),
     };
 
     const followUp = await prisma.followUp.create({
@@ -152,6 +181,7 @@ export async function GET(req: Request) {
         trendText: result.trendText,
         before: result.before,
         after: result.after,
+        pro: result.pro,
       };
     })
   );

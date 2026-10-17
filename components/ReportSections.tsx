@@ -1,5 +1,6 @@
 import { CONSTITUTIONS, type ConstitutionId } from "@/lib/tcm/constitutions";
 import type { ContraWarning, FormulaEntry, PatternHit, TreatmentPlan } from "@/lib/engine";
+import type { EightPrinciples } from "@/lib/engine/bagang";
 import type { Formula } from "@/lib/tcm/formulas";
 import { FORMULA_ROLES, type FormulaRole } from "@/lib/tcm/formula-roles";
 import { acupointLocations } from "@/lib/tcm/acupoints";
@@ -55,6 +56,8 @@ export interface ReportViewData {
   } | null;
   /** 信息矛盾点（四诊合参冲突检测；旧报告无此字段） */
   conflicts?: string[];
+  /** 八纲一级归纳（表里/寒热/虚实；旧报告无此字段） */
+  bagang?: EightPrinciples | null;
 }
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -172,7 +175,7 @@ export default function ReportSections({
   data: ReportViewData;
   analysis: string;
 }) {
-  const { plan, patterns } = data;
+  const { plan, patterns, bagang } = data;
   return (
     <div className="space-y-6">
       {/* 体质判定（仅 CCMQ 问卷；未做问卷时提示） */}
@@ -248,6 +251,42 @@ export default function ReportSections({
           </div>
           <p className="mt-2 text-xs text-ink-light">
             辨证归类：{plan.pattern.category} ｜ 舌脉参考：{plan.pattern.tonguePulse.join("；")}
+          </p>
+        </Section>
+      )}
+
+      {/* 八纲判定（一级归纳：表里定病位、寒热定病性、虚实定邪正） */}
+      {bagang && (
+        <Section title="八纲辨证（一级归纳）">
+          <p className="mb-2 text-sm">
+            病位（表里）：
+            <span className="font-medium text-cinnabar">{bagang.biaoli.value}</span>
+            <span className="ml-2 text-xs text-ink-light">
+              {bagang.biaoli.hits.length > 0
+                ? `依据：${bagang.biaoli.hits.length} 项`
+                : "无明确表/里指征"}
+            </span>
+          </p>
+          <p className="mb-2 text-sm">
+            病性（寒热）：
+            <span className="font-medium text-cinnabar">{bagang.hanre.value}</span>
+            <span className="ml-2 text-xs text-ink-light">
+              寒象 {bagang.hanre.cold.length} 项
+              {bagang.hanre.cold.length > 0 && "（如畏寒、舌淡、迟脉等）"}
+              ／热象 {bagang.hanre.heat.length} 项
+              {bagang.hanre.heat.length > 0 && "（如烦热、舌红、数脉等）"}
+            </span>
+          </p>
+          <p className="text-sm">
+            邪正（虚实）：
+            <span className="font-medium text-cinnabar">{bagang.xushi.value}</span>
+            <span className="ml-2 text-xs text-ink-light">
+              虚象 {bagang.xushi.deficiency.length} 项／实象 {bagang.xushi.excess.length} 项
+            </span>
+          </p>
+          <p className="mt-3 rounded-lg bg-rice/60 p-3 text-xs leading-relaxed text-ink-light">
+            {bagang.summary}八纲与证候相互参照：若八纲病性与证候结论相悖（如八纲偏寒而证候提示热证），
+            以「信息矛盾点」与医师面诊复核为准。
           </p>
         </Section>
       )}
@@ -525,9 +564,9 @@ export default function ReportSections({
         </Section>
       )}
 
-      {/* 健康提示（体检指标，体病相关；新版报告字段） */}
+      {/* 健康提示（体检指标 + 脉象危象/转诊提示 + 孕哺提示；新版报告字段） */}
       {data.advisories && data.advisories.length > 0 && (
-        <Section title="健康提示（近期体检指标）">
+        <Section title="健康提示">
           <ul className="list-disc space-y-2 pl-4 text-sm leading-relaxed text-ink-light">
             {data.advisories.map((a, i) => (
               <li key={i}>{a}</li>
@@ -540,7 +579,9 @@ export default function ReportSections({
       <div className="rounded-xl border border-cinnabar/40 bg-cinnabar/5 p-4 text-sm leading-relaxed text-ink">
         <p className="mb-1 font-semibold text-cinnabar">就医提示</p>
         <p>
-          若出现剧烈胸痛、高热不退、出血、意识异常等症状，请立即就医，切勿依赖本系统调理。
+          若出现剧烈胸痛、高热不退、出血不止、意识异常、剧烈腹痛、便血或黑便、皮肤眼睛发黄、
+          持续呕吐、夜间盗汗伴明显消瘦、喘憋不能平卧、抽搐、剧烈头痛伴呕吐、短期内明显消瘦等情况，
+          请立即就医，切勿依赖本系统调理。
           孕妇、哺乳期、儿童、老年人及慢性病患者，调理前请先经执业中医师面诊。
         </p>
       </div>

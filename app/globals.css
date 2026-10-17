@@ -5,3 +5,26 @@
 body {
   @apply bg-rice text-ink antialiased;
 }
+
+/* 打印优化：报告就诊携带版——隐藏导航与交互控件、避免卡片跨页断裂。
+   浏览器「打印 → 另存为 PDF」即可得到可带给医师的一页式记录。 */
+@media print {
+  header,
+  footer,
+  button,
+  a,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
+  main {
+    max-width: none;
+    padding: 0;
+  }
+  section {
+    break-inside: avoid;
+    border-color: #ddd !important;
+  }
+}

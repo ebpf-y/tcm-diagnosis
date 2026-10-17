@@ -8,12 +8,16 @@ import {
   checkContraindications,
   topSignConstitutions,
   buildCheckupAdvisories,
+  buildPulseAdvisories,
+  applyCourseWeighting,
   CHANNEL_CATEGORIES,
   type ChannelInput,
   type PatternHit,
 } from "@/lib/engine";
 import type { Sign } from "@/lib/tcm/signs";
 import { CONSTITUTIONS, type ConstitutionId } from "@/lib/tcm/constitutions";
+import { deriveEightPrinciples, calibrateByNature, PATTERN_NATURE } from "@/lib/engine/bagang";
+import { FORMULAS } from "@/lib/tcm/formulas";
 import { chatComplete } from "@/lib/llm/client";
 import { buildAnalysisPrompt } from "@/lib/prompts";
 import { generateAccessToken } from "@/lib/report-access";
@@ -50,6 +54,10 @@ interface ReportRequest {
     medications?: string;
     course?: string;
     checkup?: string[];
+    /** 孕哺状态（备孕中/怀孕中/哺乳期；方药禁忌强制校验） */
+    pregnancy?: string;
+    /** 初诊 PRO 基线（可选 1~5；存入报告供复诊量化对比） */
+    pro?: { sleep?: number; energy?: number; overall?: number };
   };
   inputSummary?: Record<string, unknown>;
 }
@@ -96,7 +104,7 @@ export async function POST(req: Request) {
         .slice(0, 2);
     }
 
-    // ---- 证候辨证（四诊合参：来源互证 + 覆盖率感知归一） ----
+    // ---- 证候辨证（四诊合参：来源互证 + 覆盖率感知归一 + 八纲寒热校正） ----
     const availableCategories: Sign["category"][] | undefined = hasSourced
       ? Array.from(
           new Set(
@@ -104,16 +112,30 @@ export async function POST(req: Request) {
           )
         )
       : undefined;
-    const patternHits = scorePatterns(signKeys, {
+    const rawHits = scorePatterns(signKeys, {
       sources: hasSourced ? sources : undefined,
       availableCategories,
       pulseMode: channels.find((c) => c.channel === "intake")?.pulseMode,
     });
+    // 八纲一级归纳：病位/病性/邪正；寒热 decisive 时对相反病性证候温和降权
+    const bagang = deriveEightPrinciples(signKeys);
+    const patternHits = applyCourseWeighting(
+      calibrateByNature(rawHits, bagang),
+      body.demographics?.course
+    );
     const qualified = patternHits.filter((h) => h.score >= PATTERN_THRESHOLD);
-    const primaryPattern: PatternHit | null = qualified[0] ?? patternHits[0] ?? null;
-    const secondaryPatterns = (qualified.length > 0 ? qualified : patternHits)
-      .filter((h) => h !== primaryPattern)
-      .slice(0, 2);
+    /**
+     * 证据门槛：最高符合度低于阈值时不出证候结论（patterns/plan 均为 null），
+     * 报告只呈现体质、八纲与健康提示——避免「主证 12 分」式的低置信结论
+     * 配上完整调理方案，误导使用者。
+     */
+    const hasConclusion = qualified.length > 0;
+    const primaryPattern: PatternHit | null = hasConclusion
+      ? (qualified[0] ?? patternHits[0] ?? null)
+      : null;
+    const secondaryPatterns = hasConclusion
+      ? qualified.filter((h) => h !== primaryPattern).slice(0, 2)
+      : [];
     const plan = primaryPattern
       ? buildTreatmentPlan(
           primaryPattern.id,
@@ -149,6 +171,20 @@ export async function POST(req: Request) {
         }
       }
     }
+    // 八纲与证候结论相悖时显式提示：寒热校正已在分数上做了保守压制，
+    // 但必须让使用者知情——真假寒热是中医辨证的常见陷阱
+    if (primaryPattern) {
+      const primaryNature = PATTERN_NATURE[primaryPattern.id];
+      if (bagang.hanre.value === "偏寒" && primaryNature === "热") {
+        conflicts.push(
+          `八纲归纳为偏寒（寒象 ${bagang.hanre.cold.length} 项），而证候判定主证为「${primaryPattern.name}」（热证）——寒热结论相悖，须甄别真寒假热，建议结合舌脉复核并经医师面诊确认。`
+        );
+      } else if (bagang.hanre.value === "偏热" && primaryNature === "寒") {
+        conflicts.push(
+          `八纲归纳为偏热（热象 ${bagang.hanre.heat.length} 项），而证候判定主证为「${primaryPattern.name}」（寒证）——寒热结论相悖，须甄别真热假寒，建议结合舌脉复核并经医师面诊确认。`
+        );
+      }
+    }
 
     // ---- 禁忌交叉校验（安全底线：病史/在服药/年龄/体征 × 方剂禁忌标签） ----
     const demo = body.demographics ?? {};
@@ -159,6 +195,7 @@ export async function POST(req: Request) {
           medications: demo.medications,
           ageGroup: demo.ageGroup,
           signKeys,
+          pregnancy: demo.pregnancy,
         })
       : [];
 
@@ -170,26 +207,27 @@ export async function POST(req: Request) {
     let analysis = "";
     if (plan) {
       try {
-        analysis = await chatComplete([
-          {
-            role: "system",
-            content: buildAnalysisPrompt({
-              patternName: plan.pattern.name,
-              patternScore: primaryPattern!.score,
-              secondaryPatternNames: secondaryPatterns.map((s) => s.name),
-              pathogenesis: plan.pattern.pathogenesis,
-              hitSummary: primaryPattern!.hits.map((h) => `${h.signLabel}（${h.role}）`),
-              channelNotes: channelNotes.length > 0 ? channelNotes : ["仅完成部分渠道采集"],
-              chiefComplaint: body.channelNotes?.intake,
-              sequencingSummary: plan.sequencing
-                .map((s) => `第${s.step}步 ${s.target}：${s.focus}`)
-                .join("；"),
-              conflicts: conflicts.length > 0 ? conflicts : undefined,
-            }),
-          },
-          { role: "user", content: "请撰写辨证分析。" },
-        ]);
-        if (analysis.trim() === "{}") analysis = "";
+        analysis = sanitizeAnalysis(
+          await chatComplete([
+            {
+              role: "system",
+              content: buildAnalysisPrompt({
+                patternName: plan.pattern.name,
+                patternScore: primaryPattern!.score,
+                secondaryPatternNames: secondaryPatterns.map((s) => s.name),
+                pathogenesis: plan.pattern.pathogenesis,
+                hitSummary: primaryPattern!.hits.map((h) => `${h.signLabel}（${h.role}）`),
+                channelNotes: channelNotes.length > 0 ? channelNotes : ["仅完成部分渠道采集"],
+                chiefComplaint: body.channelNotes?.intake,
+                sequencingSummary: plan.sequencing
+                  .map((s) => `第${s.step}步 ${s.target}：${s.focus}`)
+                  .join("；"),
+                conflicts: conflicts.length > 0 ? conflicts : undefined,
+              }),
+            },
+            { role: "user", content: "请撰写辨证分析。" },
+          ])
+        );
       } catch {
         analysis = "";
       }
@@ -227,11 +265,44 @@ export async function POST(req: Request) {
       /** 专家模式报告（脉诊专业录入；渲染专家视图） */
       expertMode: channels.find((c) => c.channel === "intake")?.pulseMode === "expert",
       /** 体检指标健康提示（体病相关；不参与辨证） */
-      advisories: buildCheckupAdvisories(body.demographics?.checkup ?? []),
+      advisories: (() => {
+        const list = [
+          ...buildCheckupAdvisories(body.demographics?.checkup ?? []),
+          ...buildPulseAdvisories(signKeys),
+        ];
+        // 孕哺状态固定提示：方药参考不适用于孕哺期自行使用
+        if (demo.pregnancy === "怀孕中" || demo.pregnancy === "哺乳期") {
+          list.push(
+            `${demo.pregnancy}：本报告全部方药参考不适用于孕哺期自行使用——任何方药、食疗调整请一律先经执业中医师面诊确认。`
+          );
+        } else if (demo.pregnancy === "备孕中") {
+          list.push("备孕中：方药参考已与备孕禁忌自动核对（见上方警示）；调理方案请经医师确认后再用。");
+        }
+        // 在服降糖药：方药调理不替代降糖治疗，甘草长期大量须监测
+        if (
+          demo.medications &&
+          /降糖|二甲双胍|胰岛素|格列|磺脲|阿卡波糖|拜糖平|西格列汀|吡格列酮/.test(demo.medications)
+        ) {
+          list.push(
+            "正在服用降糖药物：方药调理不替代降糖治疗；含甘草的补益方剂长期大量服用可影响血压与血钾，与降糖方案同用时须告知医师并监测。"
+          );
+        }
+        // 儿童/老年：剂量个体化的强制提示（报告剂量均为成人参考量）
+        if (demo.ageGroup === "<18" || demo.ageGroup === ">60") {
+          list.push(
+            "本次采集为儿童/老年：报告中所有剂量均为成人参考量，实际用量须由医师按年龄、体重酌减（常从成人量的 1/3~1/2 起调），切勿按成人量自行使用。"
+          );
+        }
+        return list;
+      })(),
       // 信息矛盾点（四诊合参冲突检测，新版报告字段）
       conflicts,
+      // 八纲一级归纳（病位/病性/邪正；新版报告字段）
+      bagang,
       // 人口学与健康背景（用于方药剂量与禁忌警示）
       demographics: body.demographics ?? null,
+      // 初诊 PRO 基线（1~5；复诊据此量化对比；新版报告字段）
+      proBaseline: body.demographics?.pro ?? null,
     });
 
     const accessToken = generateAccessToken();
@@ -290,6 +361,19 @@ export async function GET(req: Request) {
       };
     })
   );
+}
+
+/**
+ * LLM 论述后校验（安全约束的兜底执行，不只靠提示词）：
+ * 辨证分析段不得出现方剂名（方药由知识库给出，防 LLM 越权开方）、
+ * 长度异常即截断；违反约束时返回空串，由调用方回退知识库模板。
+ */
+function sanitizeAnalysis(text: string): string {
+  const t = text.trim();
+  if (!t || t === "{}") return "";
+  const withFormula = Object.values(FORMULAS).some((f) => t.includes(f.name));
+  if (withFormula) return "";
+  return t.length > 800 ? t.slice(0, 800) : t;
 }
 
 /** 无 LLM 时的辨证分析模板（直接从知识库拼装病机与命中关系） */
