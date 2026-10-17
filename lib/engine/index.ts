@@ -21,7 +21,7 @@ import { SUBSCALES } from "@/lib/tcm/questions";
 import { SIGNS, type Sign } from "@/lib/tcm/signs";
 import { PATTERNS, PATTERN_IDS, type Pattern, type PatternId } from "@/lib/tcm/patterns";
 import { FORMULAS, type Formula } from "@/lib/tcm/formulas";
-import { FORMULA_TUNING, CONTRA_TAGS } from "@/lib/tcm/formula-tuning";
+import { FORMULA_TUNING, CONTRA_TAGS, HERB_RISK_TAGS } from "@/lib/tcm/formula-tuning";
 import { DIET_THERAPIES, type DietTherapy } from "@/lib/tcm/diet-therapy";
 import { CHIEF_COMPLAINT_OPTIONS, AGE_GROUP_LABELS, HISTORY_OPTIONS, LIFESTYLE_OPTIONS, CHECKUP_OPTIONS, EXPERT_PULSE_OPTIONS, type IntakeForm } from "@/lib/tcm/intake";
 
@@ -441,7 +441,7 @@ const DEFICIENCY_PATTERNS: PatternId[] = [
   "xinshen_bujiao", // 本虚标实，以肾阴亏虚为本，归入虚证
 ];
 
-/** 实邪类证候（痰湿/湿热/气滞/血瘀/实火/外邪） */
+/** 实邪类证候（痰湿/湿热/气滞/血瘀/实火/外邪/水湿/半表半里） */
 const EXCESS_PATTERNS: PatternId[] = [
   "tanshi_zhongzu",
   "shire_yunpi",
@@ -450,6 +450,9 @@ const EXCESS_PATTERNS: PatternId[] = [
   "ganhuo_shangyan",
   "fenghan_shubiao",
   "fengre_fanbiao",
+  "fengshi_shubiao",
+  "shuishi_neiting",
+  "shaoyang_shuli",
 ];
 
 /** 查找主证指向某兼证的已知传变/兼夹关系（仅正向：本源在主证一方） */
@@ -614,16 +617,77 @@ export function buildSequencing(
   return steps;
 }
 
+/**
+ * 以否定形式表达的症状词 = 阳性体征：先于否定清洗直接提取并移除，
+ * 否则「无汗」「睡不着」等会被否定词规则整段删除而漏采。
+ */
+const NEGATION_FORM_PHRASES: [RegExp, string][] = [
+  [/(无汗|不出汗|没有汗|不排汗)/g, "sym_no_sweat"],
+  [/(睡不着|睡不好|睡不实)/g, "sym_insomnia"],
+  [/(吃不下|吃不下饭|没胃口|没有胃口)/g, "sym_appetite"],
+];
+
+/**
+ * 否定语境清洗：「不失眠」「没有口干」「无腹泻」等表述若按子串匹配
+ * 会正向命中症状关键词，造成假体征。匹配否定词（不/没/无/未……）
+ * 连同其后 1~4 个字符整段移除后再做关键词匹配。
+ * 说明：「无汗」类以否定形式构成的症状词已在上方先行提取，不在此列。
+ */
+const NEGATION_RE =
+  /(不|没有|没|无|未|勿|别|莫|不太|不怎么|毫不|少有)([^，。；、,.!？?：:\s]{1,4})/g;
+
+/**
+ * 病程加权：外感类证候在急性病程中温和上调（<1 周 ×1.15；1 周~1 月 ×1.08）。
+ * 依据：「病程」是四诊合参的语境维度——同一组体征，急性外感与慢性内伤的
+ * 解读不同（回测中已观察到外感案被内伤证噪声干扰的鉴别偏差）。
+ * 加权刻意保守：只调整归一分、不制造主症、不翻转无表证证据的判定；
+ * 与寒热校正一样只作用于报告出口（返回新数组并重排序）。
+ */
+const EXTERIOR_PATTERNS: PatternId[] = [
+  "fenghan_shubiao",
+  "fengre_fanbiao",
+  "fengshi_shubiao",
+  "shaoyang_shuli",
+];
+
+export function applyCourseWeighting(hits: PatternHit[], course?: string): PatternHit[] {
+  const factor = course === "<1w" ? 1.15 : course === "1w-1m" ? 1.08 : 1;
+  if (factor === 1) return hits;
+  return hits
+    .map((h) =>
+      EXTERIOR_PATTERNS.includes(h.id)
+        ? { ...h, score: Math.round(Math.min(100, h.score * factor) * 10) / 10 }
+        : h
+    )
+    .sort(
+      (a, b) =>
+        Number(b.hasChiefHit) - Number(a.hasChiefHit) || b.score - a.score || b.raw - a.raw
+    );
+}
+
 /** 在自由文本（对话记录、图像分析描述）中按关键词匹配体征 */
 export function matchSignsFromText(text: string, category?: Sign["category"]): string[] {
   const found: string[] = [];
+  let cleaned = text;
+  // 1. 否定形式的症状词按阳性体征提取（仅症状类）
+  if (!category || category === "symptom") {
+    for (const [re, key] of NEGATION_FORM_PHRASES) {
+      cleaned = cleaned.replace(re, () => {
+        found.push(key);
+        return " ";
+      });
+    }
+  }
+  // 2. 否定语境清洗
+  cleaned = cleaned.replace(NEGATION_RE, " ");
+  // 3. 常规关键词匹配
   for (const sign of SIGNS) {
     if (category && sign.category !== category) continue;
-    if (sign.keywords.some((kw) => text.includes(kw))) {
+    if (sign.keywords.some((kw) => cleaned.includes(kw))) {
       found.push(sign.key);
     }
   }
-  return found;
+  return Array.from(new Set(found));
 }
 
 /** 取体征提示分最高的前 N 种偏颇体质（用于舌/面/对话渠道结论） */
@@ -711,7 +775,6 @@ export function intakeToSigns(intake: IntakeForm): string[] {
     if (intake.female.leukorrhea) keys.add("sym_leukorrhea");
     if (intake.female.cycle === "不规律") keys.add("sym_mood"); // 月经失调多与情志相关
   }
-
   // 男性专问（仅性别为男时产出）
   if (intake.male && intake.gender === "male") {
     if (intake.male.emission) keys.add("sym_yijing");
@@ -837,6 +900,9 @@ export function intakeSummary(intake: IntakeForm): string {
     .map((k) => CHECKUP_OPTIONS.find((o) => o.key === k)?.label)
     .filter(Boolean);
   if (checkupLabels.length > 0) parts.push(`体检异常：${checkupLabels.join("、")}`);
+  // 孕哺状态：方药禁忌强制校验的依据，写入摘要供医师与报告核对
+  const pregnancy = intake.female?.pregnancy;
+  if (pregnancy && pregnancy !== "无") parts.push(`孕哺状态：${pregnancy}`);
   return parts.join("；");
 }
 
@@ -987,8 +1053,27 @@ export interface ContraWarning {
 }
 
 /**
- * 禁忌交叉校验：由既往史、在服药物、年龄段、当前体征构建用户条件集，
- * 与各方剂的 CONTRA_TAGS 求交集，命中即出具警示。
+ * 成分派生禁忌标签：按组成药味匹配 HERB_RISK_TAGS（含制/炮/法等炮制品前缀，
+ * 如「制附子」命中「附子」、「法半夏」命中「半夏」），与方级 CONTRA_TAGS 取并集。
+ * 这是安全底线的纵深：即使方级标签遗漏，含麻黄/附子/半夏/桃仁红花的方剂
+ * 也会自动获得相应禁忌。
+ */
+export function herbDerivedContraTags(formulaKey: string): string[] {
+  const formula = FORMULAS[formulaKey];
+  if (!formula) return [];
+  const tags = new Set<string>();
+  for (const ing of formula.ingredients) {
+    const name = ing.name.replace(/（.*）/, "");
+    for (const [herb, herbTags] of Object.entries(HERB_RISK_TAGS)) {
+      if (name.includes(herb)) herbTags.forEach((t) => tags.add(t));
+    }
+  }
+  return Array.from(tags);
+}
+
+/**
+ * 禁忌交叉校验：由既往史、在服药物、年龄段、孕哺状态、当前体征构建用户条件集，
+ * 与各方剂的 CONTRA_TAGS ∪ 成分派生标签求交集，命中即出具警示。
  * 这是安全底线：禁忌不再只是印在卡片上的静态文字。
  */
 export function checkContraindications(input: {
@@ -999,6 +1084,8 @@ export function checkContraindications(input: {
   medications?: string;
   ageGroup?: string;
   signKeys?: string[];
+  /** 孕哺状态（intake.ts FemaleForm.pregnancy：备孕中/怀孕中/哺乳期） */
+  pregnancy?: string;
 }): ContraWarning[] {
   const conditions = new Set<string>();
   for (const h of input.history ?? []) {
@@ -1007,12 +1094,32 @@ export function checkContraindications(input: {
     if (h === "stomach") conditions.add("消化道溃疡");
   }
   const meds = input.medications ?? "";
-  if (/华法林|阿司匹林|氯吡格雷|抗凝|抗血小板/.test(meds)) {
+  // 抗凝/抗血小板：通用名 + 常见商品名 + 类别词
+  if (
+    /华法林|阿司匹林|氯吡格雷|波立维|泰嘉|利伐沙班|拜瑞妥|达比加群|泰毕全|替格瑞洛|倍林达|西洛他唑|抗凝|抗血小板|抗栓|溶栓/.test(
+      meds
+    )
+  ) {
     conditions.add("正在服用抗凝/抗血小板药物");
   }
-  if (/降压/.test(meds)) conditions.add("高血压");
+  // 降压药：类别名（地平/沙坦/普利/洛尔/利尿剂）+ 通用类别词
+  if (/降压|地平|沙坦|普利|洛尔|利尿剂|螺内酯|氢氯噻嗪|可乐定/.test(meds)) {
+    conditions.add("高血压");
+  }
+  // 降糖药：方药调理不替代降糖治疗；含甘草方剂长期大量需监测（见报告健康提示）
+  if (/降糖|二甲双胍|胰岛素|格列|磺脲|阿卡波糖|拜糖平|西格列汀|吡格列酮/.test(meds)) {
+    conditions.add("糖尿病");
+  }
+  // 抗抑郁药（MAOI/SSRI/SNRI 等）：与麻黄碱合用有血压危象/血清素综合征风险
+  if (/抗抑郁|氟西汀|帕罗西汀|舍曲林|西酞普兰|艾司西酞普兰|氟伏沙明|文拉法辛|度洛西汀|米氮平|曲唑酮|单胺氧化酶|吗氯贝胺|司来吉兰|SSRI|SNRI|MAOI/.test(meds)) {
+    conditions.add("正在服用抗抑郁药");
+  }
   if (input.ageGroup === "<18") conditions.add("儿童");
   if (input.ageGroup === ">60") conditions.add("老年");
+  // 孕哺状态：孕期、备孕、哺乳期分别触发相应方剂禁忌（安全底线）
+  if (input.pregnancy === "怀孕中") conditions.add("孕妇");
+  if (input.pregnancy === "备孕中") conditions.add("备孕");
+  if (input.pregnancy === "哺乳期") conditions.add("哺乳期");
   const keys = input.signKeys ?? [];
   if (keys.includes("sym_fever")) conditions.add("感冒发热");
   if (keys.includes("sym_diarrhea")) conditions.add("便溏");
@@ -1020,9 +1127,12 @@ export function checkContraindications(input: {
 
   const warnings: ContraWarning[] = [];
   for (const fk of input.formulaKeys) {
-    const tags = CONTRA_TAGS[fk];
+    // 方级标签 ∪ 成分派生标签（HERB_RISK_TAGS），去重后求交
+    const tags = Array.from(
+      new Set([...(CONTRA_TAGS[fk] ?? []), ...herbDerivedContraTags(fk)])
+    );
     const formula = FORMULAS[fk];
-    if (!tags || !formula) continue;
+    if (!formula || tags.length === 0) continue;
     const hit = tags.filter((t) => conditions.has(t));
     if (hit.length > 0) {
       warnings.push({
@@ -1053,4 +1163,35 @@ export function buildCheckupAdvisories(checkup: string[]): string[] {
       "体重超标（BMI ≥ 24）：「肥人多痰湿」，建议结合导引运动循序渐进减重，每周减重以 0.5kg 左右为宜，切忌骤减。",
   };
   return checkup.map((k) => map[k]).filter((s): s is string => Boolean(s));
+}
+
+/**
+ * 脉律/脉率危象与心悸转诊提示（安全底线：先于辨证给出就医建议）。
+ * 结代、散、疾等脉象与反复心悸提示心律失常等器质性可能，
+ * 不能仅作气血辨证的素材。
+ */
+export function buildPulseAdvisories(signKeys: string[]): string[] {
+  const advisories: string[] = [];
+  const has = (k: string) => signKeys.includes(k);
+  if (has("pulse_san")) {
+    advisories.push(
+      "录得散脉（浮散无根、至数不齐）——中医属正气涣散之危重之象，请立即就医，切勿拖延。"
+    );
+  }
+  if (has("pulse_jiedai")) {
+    advisories.push(
+      "自测脉律有停跳（结代）：心律失常（早搏、传导阻滞等）无法凭手指自测确诊，建议尽快做心电图或动态心电图明确；明确前请先就医评估，勿自行调理。"
+    );
+  }
+  if (has("pulse_ji")) {
+    advisories.push(
+      "脉率极快（疾脉，一息七至以上）：可见于高热、甲亢、快速心律失常等，建议尽快就医查明原因。"
+    );
+  }
+  if (has("sym_palpitation")) {
+    advisories.push(
+      "反复心悸心慌：辨证不替代必要检查，建议先行心电图（必要时查甲状腺功能、血常规）排除器质性问题，再谈调理。"
+    );
+  }
+  return advisories;
 }
