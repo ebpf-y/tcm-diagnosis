@@ -27,9 +27,11 @@ tar --exclude=node_modules --exclude=.next --exclude=.git \
 ls -lh "$PACK" | awk '{print "    包大小：", $5}'
 
 echo "==> [2/4] 上传到 $USER_NAME@$IP"
-if ! scp "$PACK" "$USER_NAME@$IP:/root/tcm-latest.tar.gz"; then
+# 上传到对方 home 目录（root 为 /root，普通用户为 /home/<user>；
+# 不再硬编码 /root——普通用户无写权限会导致 scp/rsync 双双失败）
+if ! scp "$PACK" "$USER_NAME@$IP:~/tcm-latest.tar.gz"; then
   echo "    scp 失败，改用 rsync 断点续传…"
-  rsync --partial -P "$PACK" "$USER_NAME@$IP:/root/tcm-latest.tar.gz"
+  rsync --partial -P "$PACK" "$USER_NAME@$IP:~/tcm-latest.tar.gz"
 fi
 
 echo "==> [3/4] 服务器端部署（备份 → 解压 → deploy.sh）"
