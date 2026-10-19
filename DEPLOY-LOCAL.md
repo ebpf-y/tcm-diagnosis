@@ -18,7 +18,8 @@
 项目已内置全套脚本，绝大多数情况下一条命令搞定（本地 Git Bash、项目根目录）：
 
 ```bash
-bash deploy-local.sh <服务器公网IP>        # 打包 → 上传 → 备份 → 解压 → 部署 → 验证
+bash deploy-local.sh <服务器公网IP>                    # root 用户、项目默认在 ~/tcm-diagnosis
+bash deploy-local.sh <服务器公网IP> root /root/tcm/tcm-diagnosis   # 指定 SSH 用户与远程项目目录
 ```
 
 想分步执行或排查问题时用子脚本：
