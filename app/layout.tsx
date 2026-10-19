@@ -27,6 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="mx-auto max-w-4xl px-4 py-8">{children}</main>
         <footer className="mx-auto max-w-4xl px-4 pb-8 text-center text-xs text-ink-light/70">
           本系统输出为中医辨证调理参考，不构成疾病诊断；方药须在执业中医师指导下使用。
+          <span className="mt-1 block text-ink-light/40">
+            版本 {process.env.NEXT_PUBLIC_APP_VERSION} · 构建 {process.env.NEXT_PUBLIC_BUILD_TIME}
+          </span>
         </footer>
       </body>
     </html>
